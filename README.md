@@ -83,15 +83,6 @@ func Add(ctx mcp.Context, in AddIn) (Note, error) { ... }
 - The Go doc comment above is the description, unless `description=` is set. A period at the end of an annotation line is ignored.
 - Schemas come from the signature types; hints are struct tags `desc enum min max default format`, required = no `omitempty` and not a pointer.
 
-## Example
-
-[`example/`](example) uses every feature, one file per topic. Run it with `gomcp serve ./example`.
-
-## How it works
-
-gomcp parses your annotations, generates a `main` package that registers your functions with the runtime
-(`pkg/mcp`), and builds it with Go's `-overlay` flag, so nothing is written into your module.
-
 ## Documentation
 
 | Document                                   | What it covers                                                                             | Example                                                                                  |
