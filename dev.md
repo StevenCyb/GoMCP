@@ -1,0 +1,18 @@
+# mcp.json
+```json
+{
+  "mcpServers": {
+    "helpdesk": {
+      "type": "http",
+      "url": "http://127.0.0.1:8765/mcp",
+      "headers": { "Authorization": "Bearer demo-agent-key" }
+    }
+  }
+}
+
+```
+
+# Register once
+```sh
+claude --mcp-config mcp.json
+```
