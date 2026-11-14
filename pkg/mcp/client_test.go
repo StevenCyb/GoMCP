@@ -23,6 +23,7 @@ const (
 	keyAction           = "action"
 	valAccept           = "accept"
 	keyURL              = "url"
+	refPrompt           = "ref/prompt"
 	keyToolsListChanged = "toolsListChanged"
 	headerRegion        = "Mcp-Param-Region"
 	headerCount         = "Mcp-Param-X-Count"

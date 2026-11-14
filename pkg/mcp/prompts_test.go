@@ -207,7 +207,7 @@ func completionServer(t *testing.T) *testClient {
 
 func TestCompletionForPromptArgument(t *testing.T) {
 	c := completionServer(t)
-	promptRef := map[string]any{keyType: "ref/prompt", keyName: promptSummarize}
+	promptRef := map[string]any{keyType: refPrompt, keyName: promptSummarize}
 
 	res := result[completeResult](t, complete(t, c, promptRef, "style", "s", nil))
 	assert.Equal(t, []string{"short", "sparse"}, res.Completion.Values)
@@ -237,10 +237,10 @@ func TestCompletionLimitsToHundredValues(t *testing.T) {
 
 func TestCompletionWithoutCompleterIsEmpty(t *testing.T) {
 	c := completionServer(t)
-	res := result[completeResult](t, complete(t, c, map[string]any{keyType: "ref/prompt", keyName: promptSummarize}, "id", "x", nil))
+	res := result[completeResult](t, complete(t, c, map[string]any{keyType: refPrompt, keyName: promptSummarize}, "id", "x", nil))
 	assert.Empty(t, res.Completion.Values)
 
-	res = result[completeResult](t, complete(t, c, map[string]any{keyType: "ref/prompt", keyName: "unknown"}, "x", "x", nil))
+	res = result[completeResult](t, complete(t, c, map[string]any{keyType: refPrompt, keyName: "unknown"}, "x", "x", nil))
 	assert.Empty(t, res.Completion.Values)
 }
 
@@ -283,6 +283,6 @@ func TestCompletionMiddleware(t *testing.T) {
 		return next(ctx, req)
 	})
 	c := connect(t, newServer(t, s), nil)
-	_ = complete(t, c, map[string]any{keyType: "ref/prompt", keyName: promptSummarize}, "style", "s", nil)
+	_ = complete(t, c, map[string]any{keyType: refPrompt, keyName: promptSummarize}, "style", "s", nil)
 	assert.Equal(t, []mcp.Kind{mcp.KindCompletion}, seen)
 }

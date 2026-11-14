@@ -280,3 +280,11 @@ func TestDeterministicOutput(t *testing.T) {
 		assert.Equal(t, first, gen(t, p))
 	}
 }
+
+func TestNamesWithQuotesCannotBreakTheGeneratedSource(t *testing.T) {
+	p := base()
+	p.Resources = []project.Resource{{Common: project.Common{Func: fn("Read"), Name: "Read"}, URI: "x:///{id}\"+os.Getenv(\"HOME\")+\"", Template: true}}
+	p.Tools = []project.Tool{{Common: project.Common{Func: fn("Do"), Name: "a\"b\nc"}}}
+	src := gen(t, p) // gen fails when the source does not parse
+	assert.NotContains(t, src, `"resource x:///{id}"+os.Getenv`)
+}

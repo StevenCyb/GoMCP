@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/StevenCyb/GoMCP/internal/rpc"
 	"github.com/StevenCyb/GoMCP/pkg/mcp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -223,4 +224,60 @@ func TestMountWithoutOAuthOnlyServesTheEndpoint(t *testing.T) {
 	require.NoError(t, err)
 	_ = meta.Body.Close()
 	assert.Equal(t, http.StatusNotFound, meta.StatusCode)
+}
+
+func TestScopesCannotBeBypassedByAMistypedExtraField(t *testing.T) {
+	srv := newServer(t, authedServer(t, oauthScheme()))
+	reader := connectAs(t, srv, "reader", nil)
+
+	// the handler only reads its own field, so a wrong type in another one must not skip the scope check
+	cases := map[string]struct {
+		method string
+		params map[string]any
+	}{
+		"tool":     {"tools/call", map[string]any{keyName: "write_note", keyURI: 5}},
+		"resource": {"resources/read", map[string]any{keyURI: "note:///x", keyName: 5}},
+		"prompt":   {"prompts/get", map[string]any{keyName: "p", keyURI: 5}},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			code, _ := status(t, reader, tc.method, tc.params)
+			assert.Equal(t, http.StatusForbidden, code)
+		})
+	}
+}
+
+func TestCompletionNeedsTheScopesOfItsTarget(t *testing.T) {
+	srv := newServer(t, authedServer(t, oauthScheme()))
+	reader, writer := connectAs(t, srv, "reader", nil), connectAs(t, srv, "writer", nil)
+
+	for name, ref := range map[string]map[string]any{
+		"prompt":   {"type": refPrompt, keyName: "p"},
+		"resource": {"type": "ref/resource", keyURI: noteTemplate},
+	} {
+		t.Run(name, func(t *testing.T) {
+			params := map[string]any{"ref": ref, "argument": map[string]any{keyName: "id", "value": ""}}
+			code, _ := status(t, reader, "completion/complete", params)
+			assert.Equal(t, http.StatusForbidden, code)
+			code, _ = status(t, writer, "completion/complete", params)
+			assert.Equal(t, http.StatusOK, code)
+		})
+	}
+}
+
+func TestListeningOnlyAcknowledgesResourcesTheCallerMayRead(t *testing.T) {
+	s := authedServer(t, oauthScheme())
+	require.NoError(t, mcp.AddResource(s, mcp.ResourceDef{URI: "open:///{id}", Name: "o", Subscribable: true},
+		func(mcp.Context, noteURI) (mcp.Contents, error) { return mcp.Contents{mcp.TextContent("x")}, nil }))
+	require.NoError(t, mcp.AddResource(s, mcp.ResourceDef{URI: "secret:///{id}", Name: "s", Subscribable: true, Scopes: []string{scopeWrite}},
+		func(mcp.Context, noteURI) (mcp.Contents, error) { return mcp.Contents{mcp.TextContent("x")}, nil }))
+	srv := newServer(t, s)
+	filter := map[string]any{"resourceSubscriptions": []string{"open:///1", "secret:///1"}}
+
+	agreed := func(token string) string {
+		ack := connectAs(t, srv, token, nil).listen(filter).next()
+		return string(rpc.MustJSON(mustField(t, ack.Params, "notifications")))
+	}
+	assert.JSONEq(t, `{"resourceSubscriptions":["open:///1"]}`, agreed("reader"), "the reader does not get the scoped resource")
+	assert.JSONEq(t, `{"resourceSubscriptions":["open:///1","secret:///1"]}`, agreed("writer"))
 }

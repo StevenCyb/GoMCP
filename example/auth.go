@@ -12,7 +12,8 @@ import (
 	"github.com/StevenCyb/GoMCP/pkg/mcp"
 )
 
-// Example: OAuth token validation with scopes.
+// Example: OAuth token validation with scopes. This verifier is a STUB that accepts every non-empty
+// token: never use it as it is, validate the signature, expiry and audience of a real token.
 //
 // @MCP.Auth(type="oauth", resource="https://notes.example.com/mcp")
 // @MCP.AuthServer("https://auth.example.com")

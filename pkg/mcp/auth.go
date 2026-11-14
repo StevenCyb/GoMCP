@@ -144,33 +144,77 @@ func challenge(params []string) string {
 }
 
 // requiredScopes returns the scopes a request needs.
+//
+// Each method reads only the field its handler reads. Decoding the whole body into one struct would let
+// a wrongly typed unrelated field fail the decode here while the handler still accepts the request.
 func (s *Server) requiredScopes(method string, params json.RawMessage) []string {
-	var p struct {
-		Name string `json:"name"`
-		URI  string `json:"uri"`
-	}
-	if json.Unmarshal(params, &p) != nil {
+	var fields map[string]json.RawMessage
+	if json.Unmarshal(params, &fields) != nil {
 		return nil
 	}
+	str := func(raw json.RawMessage, key string) string {
+		var m map[string]json.RawMessage
+		if raw != nil {
+			_ = json.Unmarshal(raw, &m)
+		}
+		var v string
+		_ = json.Unmarshal(m[key], &v)
+		return v
+	}
+	var name, uri string
+	_ = json.Unmarshal(fields["name"], &name)
+	_ = json.Unmarshal(fields["uri"], &uri)
 	switch method {
 	case "tools/call":
-		s.mu.RLock()
-		defer s.mu.RUnlock()
-		if t := s.toolIdx[p.Name]; t != nil {
-			return t.def.Scopes
-		}
+		return s.toolScopes(name)
 	case "prompts/get":
-		s.mu.RLock()
-		defer s.mu.RUnlock()
-		if pr := s.promptIdx[p.Name]; pr != nil {
-			return pr.def.Scopes
-		}
-	case "resources/read", "resources/subscribe", "resources/unsubscribe":
-		if r, _ := s.findResource(p.URI); r != nil {
-			return r.def.Scopes
+		return s.promptScopes(name)
+	case "resources/read":
+		return s.resourceScopes(uri)
+	case "completion/complete":
+		switch ref := fields["ref"]; str(ref, "type") {
+		case "ref/prompt":
+			return s.promptScopes(str(ref, "name"))
+		case "ref/resource":
+			return s.resourceScopes(str(ref, "uri"))
 		}
 	}
 	return nil
+}
+
+func (s *Server) toolScopes(name string) []string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if t := s.toolIdx[name]; t != nil {
+		return t.def.Scopes
+	}
+	return nil
+}
+
+func (s *Server) promptScopes(name string) []string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if p := s.promptIdx[name]; p != nil {
+		return p.def.Scopes
+	}
+	return nil
+}
+
+func (s *Server) resourceScopes(uri string) []string {
+	if r, _ := s.findResource(uri); r != nil {
+		return r.def.Scopes
+	}
+	return nil
+}
+
+// hasScopes reports whether the principal holds every scope.
+func hasScopes(p Principal, need []string) bool {
+	for _, scope := range need {
+		if !slices.Contains(p.Scopes, scope) {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *Server) authorize(c *transport.Call, method string, params json.RawMessage) *transport.AuthFailure {
@@ -179,10 +223,8 @@ func (s *Server) authorize(c *transport.Call, method string, params json.RawMess
 		return nil
 	}
 	principal, _ := c.Principal().(Principal)
-	for _, scope := range need {
-		if !slices.Contains(principal.Scopes, scope) {
-			return s.forbidden(need)
-		}
+	if !hasScopes(principal, need) {
+		return s.forbidden(need)
 	}
 	return nil
 }

@@ -153,7 +153,7 @@ func (g *gen) run(sb *strings.Builder) {
 
 	for _, s := range p.Setup {
 		if s.ReturnsError {
-			fmt.Fprintf(sb, "\tif err := %s(); err != nil {\n\t\treturn fmt.Errorf(\"setup %s: %%w\", err)\n\t}\n", g.ref(s.FuncRef), s.Name)
+			fmt.Fprintf(sb, "\tif err := %s(); err != nil {\n\t\treturn fmt.Errorf(\"%%s: %%w\", %s, err)\n\t}\n", g.ref(s.FuncRef), q("setup "+s.Name))
 		} else {
 			fmt.Fprintf(sb, "\t%s()\n", g.ref(s.FuncRef))
 		}
@@ -164,7 +164,7 @@ func (g *gen) run(sb *strings.Builder) {
 	if addr == "" {
 		addr = ":8080"
 	}
-	httpSrv := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
+	httpSrv := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 2 * time.Minute}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -424,7 +424,7 @@ func (g *gen) register(sb *strings.Builder) {
 	p := g.p
 	sb.WriteString("func register(srv *mcp.Server) error {\n")
 	add := func(call, what string) {
-		fmt.Fprintf(sb, "\tif err := %s; err != nil {\n\t\treturn fmt.Errorf(\"%s: %%w\", err)\n\t}\n", call, what)
+		fmt.Fprintf(sb, "\tif err := %s; err != nil {\n\t\treturn fmt.Errorf(\"%%s: %%w\", %s, err)\n\t}\n", call, q(what))
 	}
 	for _, t := range p.Tools {
 		add(fmt.Sprintf("mcp.AddTool(srv, %s, %s)", g.toolDef(t), g.ref(t.Func)), "tool "+t.Name)
