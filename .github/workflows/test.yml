@@ -38,3 +38,24 @@ jobs:
         with:
           version: latest
           args: --path-mode=abs
+
+  # After a merge to main: install and run exactly what a user would get from this commit,
+  # so a broken module or CLI shows up before a tag is cut.
+  smoke:
+    needs: [test, lint]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    env:
+      GOPRIVATE: github.com/StevenCyb/GoMCP # fetch the commit directly, the proxy and checksum database lag
+      GOFLAGS: -mod=mod
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      # only needed while the repository is private, harmless afterwards
+      - run: git config --global url."https://x-access-token:${{ github.token }}@github.com/".insteadOf "https://github.com/"
+
+      - run: scripts/smoke.sh "$GITHUB_SHA"

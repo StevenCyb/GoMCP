@@ -2,10 +2,11 @@
 # Smoke test of a published version: installs the tool, builds a fresh module that depends on the
 # published library (no replace directive) and talks to the generated server.
 #
-#   scripts/smoke.sh v0.1.0
+#   scripts/smoke.sh v0.1.0        # a release tag
+#   GOPRIVATE=github.com/StevenCyb/GoMCP scripts/smoke.sh <commit sha>   # a pushed commit, as CI does after a merge
 set -euo pipefail
 
-VERSION="${1:?usage: smoke.sh <version, e.g. v0.1.0>}"
+VERSION="${1:?usage: smoke.sh <tag or commit sha>}"
 MODULE=github.com/StevenCyb/GoMCP
 WORK="$(mktemp -d)"
 PORT="${PORT:-18765}"
