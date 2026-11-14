@@ -29,6 +29,7 @@ linters:
     - maintidx
     - lll
     - exhaustruct
+    - exhaustruct_v5
     - godox
     - dupl
     - ireturn

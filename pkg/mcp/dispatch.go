@@ -202,8 +202,7 @@ func listResult(key string, items any, next string) map[string]any {
 
 // toRPCError turns a handler error into a protocol error.
 func toRPCError(err error) *rpc.Error {
-	var rpcErr *rpc.Error
-	if errors.As(err, &rpcErr) {
+	if rpcErr, ok := errors.AsType[*rpc.Error](err); ok {
 		return rpcErr
 	}
 	return rpc.Internal(err.Error())

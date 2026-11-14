@@ -399,8 +399,7 @@ func sameHeaderValue(got, want, typ string) bool {
 // protocol errors, every other error is an execution error with isError: true.
 func toolResult(out any, err error) (any, *rpc.Error) {
 	if err != nil {
-		var rpcErr *rpc.Error
-		if errors.As(err, &rpcErr) {
+		if rpcErr, ok := errors.AsType[*rpc.Error](err); ok {
 			return nil, rpcErr
 		}
 		return callResult{Content: []Content{Text(err.Error())}, IsError: true}, nil

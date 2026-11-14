@@ -180,8 +180,7 @@ func writeError(w http.ResponseWriter, status int, e *rpc.Error) {
 func (s *Server) post(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, defaultMaxBodyBytes))
 	if err != nil {
-		var tooLarge *http.MaxBytesError
-		if errors.As(err, &tooLarge) {
+		if _, ok := errors.AsType[*http.MaxBytesError](err); ok {
 			writeError(w, http.StatusRequestEntityTooLarge, rpc.InvalidRequest("request body too large"))
 			return
 		}

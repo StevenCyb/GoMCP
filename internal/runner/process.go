@@ -14,7 +14,8 @@ const stopTimeout = 10 * time.Second
 // process is a running server.
 type process struct {
 	cmd  *exec.Cmd
-	done chan error
+	done chan struct{} // closed when the process exited
+	err  error         // exit error, valid once done is closed
 }
 
 func start(ctx context.Context, bin string, env []string, o Options) (*process, error) {
@@ -28,8 +29,11 @@ func start(ctx context.Context, bin string, env []string, o Options) (*process, 
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("start server: %w", err)
 	}
-	p := &process{cmd: cmd, done: make(chan error, 1)}
-	go func() { p.done <- cmd.Wait() }()
+	p := &process{cmd: cmd, done: make(chan struct{})}
+	go func() {
+		p.err = cmd.Wait()
+		close(p.done)
+	}()
 	return p, nil
 }
 
@@ -78,10 +82,9 @@ func Serve(ctx context.Context, o Options) error {
 		proc.stop()
 		logf("stopped")
 		return nil
-	case err := <-proc.done:
-		if err != nil {
-			var exit *exec.ExitError
-			if errors.As(err, &exit) {
+	case <-proc.done:
+		if err := proc.err; err != nil {
+			if _, ok := errors.AsType[*exec.ExitError](err); ok {
 				return fmt.Errorf("server exited: %w", err)
 			}
 			return fmt.Errorf("server: %w", err)
