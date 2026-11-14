@@ -13,6 +13,9 @@ Streamable HTTP MCP endpoint with tools, resources and prompts.
 revision (no sessions, no `initialize`, every request carries its protocol version and client capabilities).
 Older revisions are not supported.
 
+> **Status: v0.x.** The exported API of `pkg/mcp` may still change between minor versions. Requires Go 1.26.2 or newer.
+> Release binaries for Windows are not tested yet. Code snippets in this document are abbreviated; runnable code is in [`example/`](example).
+
 ## See It In 5 Seconds
 
 Write this in a Go module that requires GoMCP (`go get github.com/StevenCyb/GoMCP`):
