@@ -1,3 +1,5 @@
+// Feature tests: build and run example/, then check every feature of it through the test client.
+
 package e2e_test
 
 import (
@@ -64,9 +66,9 @@ func startExample(t *testing.T) string {
 	return url
 }
 
-// TestExample runs every feature of the example through a client of the protocol. It is the
+// TestFeatures runs every feature of the example through a client of the protocol. It is the
 // regression test of the whole chain: annotations, generator, runtime and transport.
-func TestExample(t *testing.T) {
+func TestFeatures(t *testing.T) {
 	url := startExample(t)
 	base := strings.TrimSuffix(url, "/mcp")
 	used := newUsage()

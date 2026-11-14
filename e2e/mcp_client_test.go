@@ -1,3 +1,6 @@
+// Test client of the stateless MCP protocol (2026-07-28) used by features_test.go: it adds the
+// per-request metadata and headers, answers input requests and retries, and opens listen streams.
+
 package e2e_test
 
 import (
