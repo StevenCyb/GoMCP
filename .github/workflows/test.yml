@@ -1,0 +1,61 @@
+name: Test
+
+on:
+  push:
+    branches:
+      - "**"
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - run: go build ./...
+      - run: go vet ./...
+      # the runner tests build and run generated servers, so they need a few minutes
+      - run: go test -race ./...
+
+      # example is its own module; it must keep compiling against the runtime
+      - run: go vet ./...
+        working-directory: example
+
+  lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - uses: golangci/golangci-lint-action@v9
+        with:
+          version: latest
+          args: --path-mode=abs
+
+  # After a merge to main: install and run exactly what a user would get from this commit,
+  # so a broken module or CLI shows up before a tag is cut.
+  smoke:
+    needs: [test, lint]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    env:
+      GOPRIVATE: github.com/StevenCyb/GoMCP # fetch the commit directly, the proxy and checksum database lag
+      GOFLAGS: -mod=mod
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      # only needed while the repository is private, harmless afterwards
+      - run: git config --global url."https://x-access-token:${{ github.token }}@github.com/".insteadOf "https://github.com/"
+
+      - run: scripts/smoke.sh "$GITHUB_SHA"
