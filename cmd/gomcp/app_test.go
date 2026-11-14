@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"runtime/debug"
 	"testing"
 
 	"github.com/StevenCyb/GoMCP/internal/runner"
@@ -140,4 +141,16 @@ func TestUsageErrors(t *testing.T) {
 			assert.Empty(t, f.calls, "nothing runs on a usage error")
 		})
 	}
+}
+
+func TestResolveVersion(t *testing.T) {
+	build := func(v string) *debug.BuildInfo { return &debug.BuildInfo{Main: debug.Module{Version: v}} }
+	assert.Equal(t, "v1.2.3", resolveVersion("v1.2.3", build("v9.9.9")), "a version set at link time wins")
+	assert.Equal(t, "v0.1.0", resolveVersion("dev", build("v0.1.0")), "go install records the module version")
+	assert.Equal(t, "v0.2.0-rc1", resolveVersion("dev", build("v0.2.0-rc1")), "pre-release tags are real versions")
+	assert.Equal(t, "dev", resolveVersion("dev", build("(devel)")), "a local build has no version")
+	assert.Equal(t, "dev", resolveVersion("dev", build("v0.0.0-20261114195529-911b73f51138+dirty")), "untagged commits are dev")
+	assert.Equal(t, "dev", resolveVersion("dev", build("v0.1.1-0.20261114195529-911b73f51138")), "pseudo-versions are dev")
+	assert.Equal(t, "dev", resolveVersion("dev", build("")))
+	assert.Equal(t, "dev", resolveVersion("dev", nil), "no build info at all")
 }

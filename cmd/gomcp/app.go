@@ -4,13 +4,38 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"regexp"
+	"runtime/debug"
+	"strings"
 
 	"github.com/StevenCyb/GoCLI/pkg/cli"
 	"github.com/StevenCyb/GoMCP/internal/runner"
 )
 
-// version is overridden at release build time via -ldflags "-X main.version=...".
-var version = "dev"
+// linkVersion is overridden at release build time via -ldflags "-X main.linkVersion=...".
+var linkVersion = "dev" //nolint:gochecknoglobals // set with -ldflags -X at link time
+
+// version is the link-time version, or the module version recorded by "go install ...@vX.Y.Z".
+var version = resolveVersion(linkVersion, buildInfo())
+
+func buildInfo() *debug.BuildInfo {
+	info, _ := debug.ReadBuildInfo()
+	return info
+}
+
+// pseudoVersion matches the versions Go makes up for untagged commits, e.g. v0.0.0-20261114195529-911b73f51138.
+var pseudoVersion = regexp.MustCompile(`[-.]\d{14}-[0-9a-f]{12}`)
+
+// resolveVersion prefers the version set at link time, then the tagged module version of the build, then "dev".
+func resolveVersion(linked string, info *debug.BuildInfo) string {
+	if linked != "dev" || info == nil {
+		return linked
+	}
+	if v := info.Main.Version; strings.HasPrefix(v, "v") && !pseudoVersion.MatchString(v) && !strings.Contains(v, "+dirty") {
+		return v
+	}
+	return linked
+}
 
 const banner = `   ____       __  __  ____ ____
   / ___| ___ |  \/  |/ ___|  _ \
