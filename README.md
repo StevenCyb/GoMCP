@@ -3,6 +3,9 @@
 [![Release](https://img.shields.io/github/v/release/StevenCyb/GoMCP)](https://github.com/StevenCyb/GoMCP/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/StevenCyb/GoMCP)](go.mod)
+[![Test](https://github.com/StevenCyb/GoMCP/actions/workflows/test.yml/badge.svg)](https://github.com/StevenCyb/GoMCP/actions/workflows/test.yml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/StevenCyb/GoMCP.svg)](https://pkg.go.dev/github.com/StevenCyb/GoMCP)
+[![MCP spec](https://img.shields.io/badge/MCP-2026--07--28-blue)](https://modelcontextprotocol.io/specification/2026-07-28)
 
 Annotation-driven [MCP](https://modelcontextprotocol.io) server generator for
 Go. Write plain handler functions, sprinkle `@MCP.*` comments on top, and
