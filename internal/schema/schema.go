@@ -282,7 +282,7 @@ func parseTyped(typ, raw string) (any, error) {
 	case typeBoolean:
 		return strconv.ParseBool(raw)
 	case typeInteger:
-		return strconv.ParseInt(raw, 10, v.Type().Bits())
+		return strconv.ParseInt(raw, 10, 64)
 	case typeNumber:
 		return strconv.ParseFloat(raw, 64)
 	default:
