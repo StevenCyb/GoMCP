@@ -32,7 +32,7 @@ func repoRoot(t *testing.T) string {
 	dir, err := os.Getwd()
 	require.NoError(t, err)
 	for {
-		if data, readErr := os.ReadFile(filepath.Join(dir, "go.mod")); readErr == nil && strings.Contains(string(data), "module "+repoModule+"\n") {
+		if data, readErr := os.ReadFile(filepath.Join(dir, "go.mod")); readErr == nil && strings.Contains(strings.ReplaceAll(string(data), "\r\n", "\n"), "module "+repoModule+"\n") {
 			return dir
 		}
 		parent := filepath.Dir(dir)
