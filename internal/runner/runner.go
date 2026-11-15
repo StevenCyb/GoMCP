@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 
 	"github.com/StevenCyb/GoMCP/internal/generator"
@@ -122,6 +123,14 @@ func Build(ctx context.Context, dir, out, tags string) error {
 
 var errNoModule = errors.New("module not found")
 
+// exeSuffix is the file extension executables need on this OS.
+func exeSuffix() string {
+	if runtime.GOOS == "windows" {
+		return ".exe"
+	}
+	return ""
+}
+
 // build prepares and compiles into a numbered binary in a scratch directory.
 func build(ctx context.Context, o Options, scratch string, n int) (string, error) {
 	pr, err := prepare(o.Dir)
@@ -129,7 +138,7 @@ func build(ctx context.Context, o Options, scratch string, n int) (string, error
 		return "", err
 	}
 	defer pr.cleanup()
-	bin := filepath.Join(scratch, "server-"+strconv.Itoa(n))
+	bin := filepath.Join(scratch, "server-"+strconv.Itoa(n)+exeSuffix())
 	if err := pr.compile(ctx, bin, o.Tags); err != nil {
 		return "", err
 	}

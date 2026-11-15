@@ -87,6 +87,9 @@ jobs:
         run: |
           set -euo pipefail
           (cd dist && sha256sum gomcp-* > checksums.txt)
-          gh release create "$GITHUB_REF_NAME" dist/* \
+          # tags with a suffix (v0.1.0-rc1, v1.0.0-beta.2) are published as pre-releases
+          PRE=""
+          case "$GITHUB_REF_NAME" in *-*) PRE="--prerelease" ;; esac
+          gh release create "$GITHUB_REF_NAME" dist/* $PRE \
             --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --generate-notes \
             || gh release upload "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --clobber
