@@ -349,3 +349,29 @@ func TestHeaderTagErrors(t *testing.T) {
 		require.Error(t, err, name)
 	}
 }
+
+func TestBindURIRejectsNumbersThatDoNotFit(t *testing.T) {
+	type small struct {
+		Signed   int8   `uri:"s"`
+		Unsigned uint8  `uri:"u"`
+		Wide     int64  `uri:"w"`
+		Plain    int    `uri:"p"`
+		Count    uint16 `uri:"c"`
+	}
+	var ok small
+	require.NoError(t, schema.BindURI(map[string]string{"s": "-128", "u": "255", "w": "9223372036854775807", "p": "42", "c": "65535"}, &ok))
+	assert.Equal(t, small{Signed: -128, Unsigned: 255, Wide: 9223372036854775807, Plain: 42, Count: 65535}, ok)
+
+	for name, vars := range map[string]map[string]string{
+		"int8 too big":   {"s": "300"},
+		"int8 too small": {"s": "-129"},
+		"uint8 too big":  {"u": "256"},
+		"uint16 too big": {"c": "65536"},
+		"uint negative":  {"u": "-1"},
+		"int64 too big":  {"w": "9223372036854775808"},
+		"not a number":   {"p": "1.5"},
+	} {
+		var dst small
+		assert.Error(t, schema.BindURI(vars, &dst), name)
+	}
+}

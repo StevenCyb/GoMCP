@@ -478,13 +478,13 @@ func setFromString(v reflect.Value, raw string) error {
 	case reflect.String:
 		v.SetString(raw)
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		n, err := strconv.ParseInt(raw, 10, 64)
+		n, err := strconv.ParseInt(raw, 10, v.Type().Bits())
 		if err != nil {
 			return err
 		}
 		v.SetInt(n)
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		n, err := strconv.ParseUint(raw, 10, 64)
+		n, err := strconv.ParseUint(raw, 10, v.Type().Bits())
 		if err != nil {
 			return err
 		}
