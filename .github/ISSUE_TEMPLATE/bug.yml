@@ -1,0 +1,44 @@
+name: Bug report
+description: Something does not work as documented
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: gomcp version
+      description: Output of `gomcp version`
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: Go version and OS
+      placeholder: go1.26.2, macOS arm64
+    validations:
+      required: true
+  - type: textarea
+    id: code
+    attributes:
+      label: Annotated code
+      description: The smallest handler and `@MCP.*` annotations that show the problem
+      render: go
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual
+      description: Error output, or the request and response if it is about the protocol
+    validations:
+      required: true
+  - type: input
+    id: client
+    attributes:
+      label: MCP client
+      description: Which client talks to the server, if any (name and version)

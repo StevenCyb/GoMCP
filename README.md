@@ -620,3 +620,7 @@ return nil, mcp.ErrNotFound                         // resources: -32602 + data.
 Automatic: discover, header and version checks, `resultType`, cache hints, listen streams, schemas and argument validation, origin check, OAuth metadata and challenges, scope checks, tasks, icon resolution.
 
 Not supported, removed by 2026-07-28: sessions and `initialize`, `ping`, `logging/setLevel`, `resources/subscribe`, the GET stream and resumability, server-to-client requests, batching, legacy HTTP+SSE. Older revisions answer `-32022`. Client registration and issuing tokens belong to your authorization server.
+
+## Contributing
+
+Checks, tests and how to try a change with a real client: [README_DEV.md](README_DEV.md). Issues and pull requests are welcome; security problems go through [SECURITY.md](SECURITY.md).
