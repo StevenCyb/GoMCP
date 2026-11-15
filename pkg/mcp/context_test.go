@@ -1,10 +1,12 @@
 package mcp_test
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/StevenCyb/GoMCP/internal/rpc"
 	"github.com/StevenCyb/GoMCP/pkg/mcp"
@@ -333,17 +335,43 @@ func TestUrlElicitationDeclinedAndUnsupported(t *testing.T) {
 	assert.True(t, result[toolResult](t, callT(t, c)).IsError, "form only clients cannot do URL mode")
 }
 
-func TestElicitDoneForUnknownIDIsClosed(t *testing.T) {
+func TestElicitDoneForUnknownIDStaysBlocked(t *testing.T) {
 	c := toolServer(t, nil, func(ctx mcp.Context, _ mcp.Empty) (string, error) {
 		select {
 		case <-ctx.ElicitDone("nope"):
 			return "closed", nil
-		default:
+		case <-time.After(50 * time.Millisecond):
 			return "blocked", nil
 		}
 	})
-	assert.Equal(t, "closed", firstText(t, callT(t, c)))
+	assert.Equal(t, "blocked", firstText(t, callT(t, c)), "an unknown id must not look like a completed page")
 	assert.False(t, mcp.CompleteElicitation("nope"))
+}
+
+// limitScheme accepts every token and makes it the subject, so each test owns its callers.
+func limitScheme() mcp.AuthScheme {
+	s := oauthScheme()
+	s.Verify = func(_ context.Context, token string) (mcp.Principal, error) {
+		return mcp.Principal{Subject: token, Scopes: []string{scopeRead}}, nil
+	}
+	return s
+}
+
+func TestElicitURLIsLimitedPerCaller(t *testing.T) {
+	s := newBasicServer(mcp.WithAuth(limitScheme()), mcp.WithLimits(mcp.Limits{ElicitationsPerCaller: 2}))
+	require.NoError(t, mcp.AddTool(s, mcp.ToolDef{Name: "t"}, func(ctx mcp.Context, _ mcp.Empty) (string, error) {
+		_, err := ctx.ElicitURL("Sign in", "https://example.com/?e={id}")
+		return "", err
+	}))
+	srv := newServer(t, s)
+	caps := map[string]any{mcp.CapElicitation: map[string]any{keyURL: map[string]any{}}}
+	flooder := connectAs(t, srv, "elicit-flooder", caps)
+	for range 2 {
+		assert.Equal(t, "input_required", result[map[string]any](t, flooder.once("tools/call", map[string]any{keyName: "t"}, nil))["resultType"])
+	}
+	assert.True(t, result[toolResult](t, flooder.once("tools/call", map[string]any{keyName: "t"}, nil)).IsError, "the third open elicitation is refused")
+	other := connectAs(t, srv, "elicit-other", caps)
+	assert.Equal(t, "input_required", result[map[string]any](t, other.once("tools/call", map[string]any{keyName: "t"}, nil))["resultType"], "other callers are not affected")
 }
 
 // firstRound returns the input_required result of the first request of a URL elicitation.

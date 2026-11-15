@@ -211,32 +211,65 @@ type elicitation struct {
 	once    sync.Once
 }
 
-var (
-	elicitations   sync.Map                                                                     //nolint:gochecknoglobals // id -> *elicitation; the web page only knows the id
-	closedChan     = func() chan struct{} { ch := make(chan struct{}); close(ch); return ch }() //nolint:gochecknoglobals // shared closed channel
-	elicitationTTL = 30 * time.Minute                                                           //nolint:gochecknoglobals // lifetime of an open URL elicitation
-)
+// elicitationTTL is the lifetime of an open URL elicitation.
+const elicitationTTL = 30 * time.Minute
 
-func newElicitation(owner string) string {
+// errElicitationLimit is returned when the registry is full.
+var errElicitationLimit = errors.New("mcp: too many open URL elicitations, try again later")
+
+// elicitationRegistry holds the open URL elicitations of the process: the web page that completes
+// one only knows the id, so the registry cannot belong to a server.
+type elicitationRegistry struct {
+	mu       sync.Mutex
+	byID     map[string]*elicitation
+	perOwner map[string]int
+	swept    time.Time
+}
+
+var elicitations = &elicitationRegistry{byID: map[string]*elicitation{}, perOwner: map[string]int{}} //nolint:gochecknoglobals // see elicitationRegistry
+
+func (r *elicitationRegistry) add(owner string, lim Limits) (string, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	now := time.Now()
-	elicitations.Range(func(k, v any) bool {
-		if e, ok := v.(*elicitation); ok && now.After(e.expires) {
-			elicitations.Delete(k)
-		}
-		return true
-	})
+	r.sweepLocked(now, false)
+	if len(r.byID) >= lim.Elicitations || r.perOwner[owner] >= lim.ElicitationsPerCaller {
+		r.sweepLocked(now, true) // expired ones may just have made room
+	}
+	if len(r.byID) >= lim.Elicitations || r.perOwner[owner] >= lim.ElicitationsPerCaller {
+		return "", errElicitationLimit
+	}
 	id := rand.Text()
-	elicitations.Store(id, &elicitation{owner: owner, expires: now.Add(elicitationTTL), done: make(chan struct{})})
-	return id
+	r.byID[id] = &elicitation{owner: owner, expires: now.Add(elicitationTTL), done: make(chan struct{})}
+	r.perOwner[owner]++
+	return id, nil
+}
+
+func (r *elicitationRegistry) get(id string) *elicitation {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.byID[id]
+}
+
+// sweepLocked drops the expired elicitations. It scans the registry, so unless forced it runs at most once a second.
+func (r *elicitationRegistry) sweepLocked(now time.Time, force bool) {
+	if !force && now.Sub(r.swept) < time.Second {
+		return
+	}
+	r.swept = now
+	for id, e := range r.byID {
+		if now.After(e.expires) {
+			delete(r.byID, id)
+			if r.perOwner[e.owner]--; r.perOwner[e.owner] <= 0 {
+				delete(r.perOwner, e.owner)
+			}
+		}
+	}
 }
 
 func lookupElicitation(id, owner string) (*elicitation, bool) {
-	v, ok := elicitations.Load(id)
-	if !ok {
-		return nil, false
-	}
-	e, ok := v.(*elicitation)
-	return e, ok && e.owner == owner && time.Now().Before(e.expires)
+	e := elicitations.get(id)
+	return e, e != nil && e.owner == owner && time.Now().Before(e.expires)
 }
 
 // ElicitURL sends the user to a web page. The first call asks the client; once the client says
@@ -247,7 +280,10 @@ func (c *callContext) ElicitURL(message, url string) (string, error) {
 	}
 	key := c.nextKey("url")
 	if c.task != nil {
-		id := newElicitation(c.principal.Subject)
+		id, err := elicitations.add(c.principal.Subject, c.srv.limits)
+		if err != nil {
+			return "", err
+		}
 		raw, err := c.task.ask(c, key, "elicitation/create", urlParams(message, url, id))
 		if err != nil {
 			return "", err
@@ -265,7 +301,10 @@ func (c *callContext) ElicitURL(message, url string) (string, error) {
 		}
 		// the elicitation is gone (expired or the server restarted): ask again
 	}
-	id := newElicitation(c.principal.Subject)
+	id, err := elicitations.add(c.principal.Subject, c.srv.limits)
+	if err != nil {
+		return "", err
+	}
 	c.stateOut[key] = id
 	c.asked = append(c.asked, inputRequest{key: key, method: "elicitation/create", params: urlParams(message, url, id)})
 	return "", ErrInputRequired
@@ -287,11 +326,14 @@ func urlAnswer(raw json.RawMessage) error {
 	return nil
 }
 
+// ElicitDone returns the channel that CompleteElicitation closes. It fails closed: for an id that
+// is unknown, expired or not the caller's the channel never closes, so a handler must also select
+// on ctx.Done() and a timeout of its own.
 func (c *callContext) ElicitDone(id string) <-chan struct{} {
 	if e, ok := lookupElicitation(id, c.principal.Subject); ok {
 		return e.done
 	}
-	return closedChan
+	return nil // blocks forever
 }
 
 // CompleteElicitation ends a URL elicitation: it unblocks ElicitDone. The backend of the page the
@@ -300,12 +342,8 @@ func (c *callContext) ElicitDone(id string) <-chan struct{} {
 // The elicitation stays known until it expires: the user may finish the page before the client
 // has answered and retried, and the retry must still find it.
 func CompleteElicitation(id string) bool {
-	v, ok := elicitations.Load(id)
-	if !ok {
-		return false
-	}
-	e, ok := v.(*elicitation)
-	if !ok {
+	e := elicitations.get(id)
+	if e == nil {
 		return false
 	}
 	e.once.Do(func() { close(e.done) })

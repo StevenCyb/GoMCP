@@ -41,13 +41,13 @@ func subscriptionID(t *testing.T, m rpc.Message) json.RawMessage {
 
 func TestListenAcknowledgesFirst(t *testing.T) {
 	_, c := listenServer(t)
-	l := c.listen(map[string]any{keyToolsListChanged: true, "resourceSubscriptions": []string{"x://watched", "x://plain", "x://nope"}})
+	l := c.listen(map[string]any{keyToolsListChanged: true, keyResourceSubs: []string{"x://watched", "x://plain", "x://nope"}})
 
 	ack := l.next()
 	assert.Equal(t, "notifications/subscriptions/acknowledged", ack.Method)
 	assert.JSONEq(t, `1`, string(subscriptionID(t, ack)), "the subscription id is the id of the request")
 	assert.JSONEq(t, `{"toolsListChanged":true,"resourceSubscriptions":["x://watched"]}`,
-		string(rpc.MustJSON(mustField(t, ack.Params, "notifications"))), "only what the server honors is acknowledged")
+		string(rpc.MustJSON(mustField(t, ack.Params, keyNotifications))), "only what the server honors is acknowledged")
 }
 
 func mustField(t *testing.T, raw json.RawMessage, field string) json.RawMessage {
@@ -59,7 +59,7 @@ func mustField(t *testing.T, raw json.RawMessage, field string) json.RawMessage 
 
 func TestListenDeliversWhatWasAskedFor(t *testing.T) {
 	s, c := listenServer(t)
-	l := c.listen(map[string]any{keyToolsListChanged: true, "resourceSubscriptions": []string{"x://watched"}})
+	l := c.listen(map[string]any{keyToolsListChanged: true, keyResourceSubs: []string{"x://watched"}})
 	_ = l.next() // acknowledged
 
 	s.ToolsChanged()
@@ -81,7 +81,7 @@ func TestListenDeliversWhatWasAskedFor(t *testing.T) {
 
 func TestListenIgnoresRequestScopedNotifications(t *testing.T) {
 	_, c := listenServer(t)
-	l := c.listen(map[string]any{keyToolsListChanged: true, "resourceSubscriptions": []string{"x://watched"}})
+	l := c.listen(map[string]any{keyToolsListChanged: true, keyResourceSubs: []string{"x://watched"}})
 	_ = l.next()
 
 	worker := connect(t, c.srvOf(t), nil)
@@ -118,14 +118,14 @@ func mustString(t *testing.T, raw json.RawMessage, field string) string {
 
 func TestListenNeedsAnSSEClient(t *testing.T) {
 	_, c := listenServer(t)
-	res := c.once("subscriptions/listen", map[string]any{"notifications": map[string]any{keyToolsListChanged: true}}, map[string]string{"Accept": "application/json"})
+	res := c.once("subscriptions/listen", map[string]any{keyNotifications: map[string]any{keyToolsListChanged: true}}, map[string]string{"Accept": "application/json"})
 	require.NotNil(t, res.Error)
 	assert.Equal(t, rpc.CodeInvalidRequest, res.Error.Code)
 }
 
 func TestListenForTasksNeedsTheExtension(t *testing.T) {
 	_, c := listenServer(t)
-	resp := c.post("subscriptions/listen", map[string]any{"notifications": map[string]any{"taskIds": []string{"abc"}}}, nil)
+	resp := c.post("subscriptions/listen", map[string]any{keyNotifications: map[string]any{"taskIds": []string{"abc"}}}, nil)
 	_ = resp.Body.Close()
 	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
 }
@@ -140,4 +140,35 @@ func TestSeveralListenersGetTheirOwnTag(t *testing.T) {
 	s.ToolsChanged()
 	assert.JSONEq(t, `1`, string(subscriptionID(t, first.next())))
 	assert.JSONEq(t, `2`, string(subscriptionID(t, second.next())))
+}
+
+func TestListenStreamsAreLimited(t *testing.T) {
+	s := newBasicServer(mcp.WithAuth(limitScheme()), mcp.WithLimits(mcp.Limits{Streams: 3, StreamsPerCaller: 2}))
+	srv := newServer(t, s)
+	filter := map[string]any{keyToolsListChanged: true}
+	open := func(c *testClient) {
+		_ = c.listen(filter).next()
+	}
+	flooder := connectAs(t, srv, "stream-flooder", nil)
+	open(flooder)
+	open(flooder)
+	res := flooder.once("subscriptions/listen", map[string]any{keyNotifications: filter}, nil)
+	require.NotNil(t, res.Error, "the third stream of one caller is refused")
+	assert.Equal(t, rpc.CodeInvalidRequest, res.Error.Code)
+	assert.Contains(t, res.Error.Message, "caller")
+
+	open(connectAs(t, srv, "stream-other", nil))
+	res = connectAs(t, srv, "stream-third", nil).once("subscriptions/listen", map[string]any{keyNotifications: filter}, nil)
+	require.NotNil(t, res.Error, "the server wide limit holds")
+	assert.Equal(t, rpc.CodeInvalidRequest, res.Error.Code)
+}
+
+func TestListenEntriesAreLimited(t *testing.T) {
+	s := newBasicServer(mcp.WithLimits(mcp.Limits{ListenEntries: 2}))
+	c := connect(t, newServer(t, s), nil)
+	res := c.once("subscriptions/listen", map[string]any{keyNotifications: map[string]any{"resourceSubscriptions": []string{"x://one", "x://two", "x://three"}}}, nil)
+	require.NotNil(t, res.Error)
+	assert.Equal(t, rpc.CodeInvalidParams, res.Error.Code)
+
+	_ = c.listen(map[string]any{"resourceSubscriptions": []string{"x://one", "x://two"}}).next()
 }

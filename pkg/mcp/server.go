@@ -18,8 +18,9 @@ import (
 
 // Server is an MCP server; it is an http.Handler for the MCP endpoint.
 type Server struct {
-	info Info
-	opts options
+	info   Info
+	opts   options
+	limits Limits
 
 	mu          sync.RWMutex
 	tools       []*tool
@@ -62,6 +63,7 @@ func NewServer(info Info, opts ...Option) *Server {
 		opt(&s.opts)
 	}
 	s.stateKey = newStateKey(s.opts.stateKey)
+	s.limits = s.opts.limits.withDefaults()
 	cfg := transport.Config{
 		AllowedOrigins: s.opts.origins,
 		KeepAlive:      s.opts.keepAlive,

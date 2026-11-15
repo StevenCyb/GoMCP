@@ -276,7 +276,7 @@ func TestListeningOnlyAcknowledgesResourcesTheCallerMayRead(t *testing.T) {
 
 	agreed := func(token string) string {
 		ack := connectAs(t, srv, token, nil).listen(filter).next()
-		return string(rpc.MustJSON(mustField(t, ack.Params, "notifications")))
+		return string(rpc.MustJSON(mustField(t, ack.Params, keyNotifications)))
 	}
 	assert.JSONEq(t, `{"resourceSubscriptions":["open:///1"]}`, agreed("reader"), "the reader does not get the scoped resource")
 	assert.JSONEq(t, `{"resourceSubscriptions":["open:///1","secret:///1"]}`, agreed("writer"))

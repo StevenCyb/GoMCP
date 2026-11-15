@@ -61,6 +61,11 @@ type testClient struct {
 	rounds int
 }
 
+const (
+	keyResourceSubs  = "resourceSubscriptions"
+	keyNotifications = "notifications"
+)
+
 // newServer starts s behind an httptest server.
 func newServer(t *testing.T, s *mcp.Server) *httptest.Server {
 	t.Helper()
@@ -247,7 +252,7 @@ type listener struct {
 // listen opens subscriptions/listen with the filter.
 func (c *testClient) listen(filter map[string]any) *listener {
 	c.t.Helper()
-	resp := c.post("subscriptions/listen", map[string]any{"notifications": filter}, nil)
+	resp := c.post("subscriptions/listen", map[string]any{keyNotifications: filter}, nil)
 	require.Equal(c.t, http.StatusOK, resp.StatusCode)
 	c.t.Cleanup(func() { _ = resp.Body.Close() })
 	l := &listener{t: c.t, events: make(chan rpc.Message, 64), final: make(chan rpc.Message, 1)}
