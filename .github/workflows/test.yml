@@ -5,6 +5,7 @@ on:
     branches:
       - "**"
   pull_request:
+  workflow_dispatch: # run the smoke test of a branch by hand: Actions > Test > Run workflow
 
 jobs:
   test:
@@ -59,10 +60,17 @@ jobs:
   # After a merge to main: install and run exactly what a user would get from this commit,
   # so a broken module or CLI shows up before a tag is cut.
   smoke:
-    needs: [test, lint]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [test, test-windows, lint]
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
     timeout-minutes: 10
-    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-latest, macos-latest] # the release targets
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
     env:
       GOPRIVATE: github.com/StevenCyb/GoMCP # fetch the commit directly, the proxy and checksum database lag
       GOFLAGS: -mod=mod
