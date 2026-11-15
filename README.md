@@ -398,7 +398,13 @@ Send the user to your own web page (sign-in, payment). The page's backend calls 
 ```go
 id, err := ctx.ElicitURL("Sign in", "https://example.com/connect?e={id}") // {id} is filled in
 if err != nil { return out, err }
-<-ctx.ElicitDone(id)                       // closed by mcp.CompleteElicitation(id) on your page
+select {
+case <-ctx.ElicitDone(id): // closed by mcp.CompleteElicitation(id) on your page
+case <-ctx.Done():         // never closes for an unknown or expired id: always keep a way out
+	return out, ctx.Err()
+case <-time.After(10 * time.Minute):
+	return out, mcp.ToolError("sign-in timed out")
+}
 ```
 
 ```mermaid
@@ -605,6 +611,7 @@ log.Fatal(http.ListenAndServe(":8080", mux))
 | `WithPageSize(n)` | page size of list operations |
 | `WithBaseURL(url)` | base of relative icon sources |
 | `WithCache(ttl, scope)` | `ttlMs` and `cacheScope` hints |
+| `WithLimits(mcp.Limits{...})` | caps for tasks (`Tasks` 1000, `TasksPerCaller` 100, `TaskTTL` 1h, `TaskInputTimeout` 15m), listen streams (`Streams` 1000, `StreamsPerCaller` 20, `ListenEntries` 100 per request) and open URL elicitations (`Elicitations` 10000, `ElicitationsPerCaller` 100); zero keeps the default, over the cap the request fails with a "try again later" error |
 | `WithStateKey(key)` | secret for `requestState`; share it between instances (`GOMCP_STATE_KEY` in generated servers) |
 | `WithAuth(schemes...)` | authentication schemes |
 

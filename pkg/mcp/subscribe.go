@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"maps"
 	"slices"
+	"strconv"
 	"sync"
 
 	"github.com/StevenCyb/GoMCP/internal/rpc"
@@ -26,6 +27,7 @@ type outgoing struct {
 
 // subscriber is one open subscriptions/listen stream.
 type subscriber struct {
+	owner  string
 	filter subscriptionFilter
 	out    chan outgoing
 }
@@ -35,13 +37,27 @@ type subscribers struct {
 	list map[*subscriber]struct{}
 }
 
-func (s *subscribers) add(sub *subscriber) {
+// add registers the stream unless the server or its owner has too many open.
+func (s *subscribers) add(sub *subscriber, lim Limits) *rpc.Error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if len(s.list) >= lim.Streams {
+		return rpc.InvalidRequest("too many open streams on the server, try again later")
+	}
+	own := 0
+	for o := range s.list {
+		if o.owner == sub.owner {
+			own++
+		}
+	}
+	if own >= lim.StreamsPerCaller {
+		return rpc.InvalidRequest("too many open streams of this caller, close one or try again later")
+	}
 	if s.list == nil {
 		s.list = map[*subscriber]struct{}{}
 	}
 	s.list[sub] = struct{}{}
+	return nil
 }
 
 func (s *subscribers) remove(sub *subscriber) {
@@ -104,9 +120,15 @@ func (s *Server) listen(ctx *callContext, params json.RawMessage) (any, *rpc.Err
 		return nil, rpc.InvalidRequest("subscriptions/listen needs a client that accepts text/event-stream")
 	}
 
+	if n := p.Notifications; len(n.ResourceSubscriptions) > s.limits.ListenEntries || len(n.TaskIDs) > s.limits.ListenEntries {
+		return nil, rpc.InvalidParams("too many resourceSubscriptions or taskIds in one request, at most " + strconv.Itoa(s.limits.ListenEntries))
+	}
+
 	agreed := s.agree(ctx, p.Notifications)
-	sub := &subscriber{filter: agreed, out: make(chan outgoing, 256)}
-	s.subs.add(sub)
+	sub := &subscriber{owner: ctx.principal.Subject, filter: agreed, out: make(chan outgoing, 256)}
+	if rpcErr := s.subs.add(sub, s.limits); rpcErr != nil {
+		return nil, rpcErr
+	}
 	defer s.subs.remove(sub)
 
 	tag := map[string]any{"io.modelcontextprotocol/subscriptionId": ctx.call.ID()}

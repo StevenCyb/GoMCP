@@ -35,7 +35,8 @@ type Context interface {
 	// ElicitURL sends the user to a web page; {id} in url is replaced by the elicitation id.
 	// It returns once the user accepted; the page's backend ends the wait with CompleteElicitation.
 	ElicitURL(message, url string) (string, error)
-	// ElicitDone is closed when the URL elicitation with that id completed.
+	// ElicitDone is closed when the URL elicitation with that id completed. For an unknown, expired or
+	// foreign id it never closes: also select on Done() and a timeout.
 	ElicitDone(id string) <-chan struct{}
 
 	// ResourceUpdated tells the listeners subscribed to uri that its content changed.

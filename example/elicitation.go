@@ -4,7 +4,11 @@
 
 package api
 
-import "github.com/StevenCyb/GoMCP/pkg/mcp"
+import (
+	"time"
+
+	"github.com/StevenCyb/GoMCP/pkg/mcp"
+)
 
 // Example: schema of the form shown to the user.
 //
@@ -76,6 +80,13 @@ func Connect(ctx mcp.Context, _ mcp.Empty) (mcp.Empty, error) {
 	if err != nil {
 		return mcp.Empty{}, err
 	}
-	<-ctx.ElicitDone(id)
-	return mcp.Empty{}, nil
+	// ElicitDone never closes for an expired id, so always wait with a way out.
+	select {
+	case <-ctx.ElicitDone(id):
+		return mcp.Empty{}, nil
+	case <-ctx.Done():
+		return mcp.Empty{}, ctx.Err()
+	case <-time.After(10 * time.Minute):
+		return mcp.Empty{}, mcp.ToolError("sign-in timed out")
+	}
 }

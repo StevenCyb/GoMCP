@@ -30,7 +30,7 @@ type taskEntry struct {
 	id      string
 	owner   string
 	created time.Time
-	ttl     time.Duration // zero keeps the task until the server stops
+	ttl     time.Duration
 	poll    time.Duration
 	cancel  context.CancelFunc
 	srv     *Server
@@ -97,7 +97,7 @@ func (t *taskEntry) setStatus(status, message string) bool {
 		return false
 	}
 	t.status, t.message, t.updated = status, message, time.Now()
-	if terminal(status) && t.ttl > 0 {
+	if terminal(status) {
 		t.expires = t.updated.Add(t.ttl)
 	}
 	t.mu.Unlock()
@@ -136,12 +136,16 @@ func (t *taskEntry) ask(c *callContext, key, method string, params any) (json.Ra
 	t.mu.Unlock()
 	t.setStatus(taskInputRequired, "waiting for input")
 
+	timeout := time.NewTimer(t.srv.limits.TaskInputTimeout)
+	defer timeout.Stop()
 	var raw json.RawMessage
 	var err error
 	select {
 	case raw = <-ch:
 	case <-c.Done():
 		err = fmt.Errorf("waiting for the client: %w", c.Err())
+	case <-timeout.C:
+		err = fmt.Errorf("the client did not answer within %s", t.srv.limits.TaskInputTimeout)
 	}
 
 	t.mu.Lock()
@@ -181,32 +185,66 @@ func (t *taskEntry) expired(now time.Time) bool {
 
 // taskStore holds the tasks of the server.
 type taskStore struct {
-	mu    sync.Mutex
-	tasks map[string]*taskEntry
+	mu       sync.Mutex
+	tasks    map[string]*taskEntry
+	perOwner map[string]int
+	swept    time.Time
 }
 
-func newTaskStore() *taskStore { return &taskStore{tasks: map[string]*taskEntry{}} }
+func newTaskStore() *taskStore {
+	return &taskStore{tasks: map[string]*taskEntry{}, perOwner: map[string]int{}}
+}
 
-func (s *taskStore) add(t *taskEntry) {
+// add stores the task unless the server or its owner holds too many.
+func (s *taskStore) add(t *taskEntry, lim Limits) *rpc.Error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.sweepLocked()
+	s.sweepLocked(false)
+	if len(s.tasks) >= lim.Tasks || s.perOwner[t.owner] >= lim.TasksPerCaller {
+		s.sweepLocked(true) // finished tasks may just have run out
+	}
+	if len(s.tasks) >= lim.Tasks {
+		return rpc.InvalidRequest("too many tasks on the server, try again later")
+	}
+	if s.perOwner[t.owner] >= lim.TasksPerCaller {
+		return rpc.InvalidRequest("too many tasks of this caller, try again later")
+	}
 	s.tasks[t.id] = t
+	s.perOwner[t.owner]++
+	return nil
 }
 
+// get returns the task unless its ttl ran out.
 func (s *taskStore) get(id string) *taskEntry {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.sweepLocked()
-	return s.tasks[id]
+	s.sweepLocked(false)
+	t := s.tasks[id]
+	if t != nil && t.expired(time.Now()) {
+		s.removeLocked(t)
+		return nil
+	}
+	return t
 }
 
-// sweepLocked drops the tasks whose ttl ran out.
-func (s *taskStore) sweepLocked() {
+func (s *taskStore) removeLocked(t *taskEntry) {
+	delete(s.tasks, t.id)
+	if s.perOwner[t.owner]--; s.perOwner[t.owner] <= 0 {
+		delete(s.perOwner, t.owner)
+	}
+}
+
+// sweepLocked drops the tasks whose ttl ran out. It scans the whole store, so unless forced it
+// runs at most once a second.
+func (s *taskStore) sweepLocked(force bool) {
 	now := time.Now()
-	for id, t := range s.tasks {
+	if !force && now.Sub(s.swept) < time.Second {
+		return
+	}
+	s.swept = now
+	for _, t := range s.tasks {
 		if t.expired(now) {
-			delete(s.tasks, id)
+			s.removeLocked(t)
 		}
 	}
 }
@@ -225,11 +263,18 @@ func (s *Server) tasksEnabledLocked() bool {
 func (s *Server) startTask(ctx *callContext, t *tool, params json.RawMessage) (any, *rpc.Error) {
 	taskCtx, cancel := context.WithCancel(s.base)
 	now := time.Now()
+	ttl := t.def.TaskTTL
+	if ttl <= 0 {
+		ttl = s.limits.TaskTTL
+	}
 	entry := &taskEntry{
 		id: rand.Text(), owner: ctx.principal.Subject, created: now, updated: now, status: taskWorking,
-		ttl: t.def.TaskTTL, poll: t.def.TaskPoll, cancel: cancel, srv: s,
+		ttl: ttl, poll: t.def.TaskPoll, cancel: cancel, srv: s,
 	}
-	s.tasks.add(entry)
+	if rpcErr := s.tasks.add(entry, s.limits); rpcErr != nil {
+		cancel()
+		return nil, rpcErr
+	}
 
 	tc := &callContext{
 		Context: taskCtx, srv: s, meta: ctx.meta, caps: ctx.caps, principal: ctx.principal,

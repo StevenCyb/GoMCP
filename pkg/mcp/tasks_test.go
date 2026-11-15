@@ -46,10 +46,10 @@ type taskEnv struct {
 	stopped chan struct{}
 }
 
-func newTaskEnv(t *testing.T, caps map[string]any) *taskEnv {
+func newTaskEnv(t *testing.T, caps map[string]any, opts ...mcp.Option) *taskEnv {
 	t.Helper()
 	env := &taskEnv{release: make(chan struct{}), started: make(chan struct{}, 4), stopped: make(chan struct{}, 4)}
-	s := newBasicServer()
+	s := newBasicServer(opts...)
 	env.srv = s
 	add := func(def mcp.ToolDef, h func(mcp.Context, mcp.Empty) (string, error)) {
 		require.NoError(t, mcp.AddTool(s, def, h))
@@ -287,4 +287,53 @@ func TestToolErrorsOfTaskToolsStayErrors(t *testing.T) {
 	res := result[toolResult](t, callTool(t, env.c, "tool_error", nil))
 	assert.True(t, res.IsError)
 	require.Error(t, errors.New("sanity"))
+}
+
+func TestTasksAreLimited(t *testing.T) {
+	s := newBasicServer(mcp.WithAuth(limitScheme()), mcp.WithLimits(mcp.Limits{Tasks: 2}))
+	release := make(chan struct{})
+	t.Cleanup(func() { close(release) })
+	require.NoError(t, mcp.AddTool(s, mcp.ToolDef{Name: "waits", Task: mcp.TaskOptional},
+		func(mcp.Context, mcp.Empty) (string, error) { <-release; return "", nil }))
+	srv := newServer(t, s)
+	for _, who := range []string{"global-a", "global-b"} {
+		task := result[taskObject](t, connectAs(t, srv, who, withTasks(nil)).once("tools/call", map[string]any{keyName: "waits"}, nil))
+		require.Equal(t, "task", task.ResultType)
+	}
+	res := connectAs(t, srv, "global-c", withTasks(nil)).once("tools/call", map[string]any{keyName: "waits"}, nil)
+	require.NotNil(t, res.Error, "the task over the limit is refused")
+	assert.Equal(t, rpc.CodeInvalidRequest, res.Error.Code)
+	assert.Contains(t, res.Error.Message, "try again later")
+}
+
+func TestTasksAreLimitedPerCaller(t *testing.T) {
+	s := newBasicServer(mcp.WithAuth(limitScheme()), mcp.WithLimits(mcp.Limits{TasksPerCaller: 1}))
+	require.NoError(t, mcp.AddTool(s, mcp.ToolDef{Name: "fast", Task: mcp.TaskOptional},
+		func(mcp.Context, mcp.Empty) (string, error) { return "done", nil }))
+	srv := newServer(t, s)
+	flooder, other := connectAs(t, srv, "task-flooder", withTasks(nil)), connectAs(t, srv, "task-other", withTasks(nil))
+
+	require.Equal(t, "task", result[taskObject](t, flooder.once("tools/call", map[string]any{keyName: "fast"}, nil)).ResultType)
+	res := flooder.once("tools/call", map[string]any{keyName: "fast"}, nil)
+	require.NotNil(t, res.Error, "finished tasks count until they expire")
+	assert.Equal(t, rpc.CodeInvalidRequest, res.Error.Code)
+	assert.Equal(t, "task", result[taskObject](t, other.once("tools/call", map[string]any{keyName: "fast"}, nil)).ResultType, "other callers are not affected")
+}
+
+func TestTaskWithoutTTLGetsTheDefaultAndExpires(t *testing.T) {
+	env := newTaskEnv(t, withTasks(nil), mcp.WithLimits(mcp.Limits{TaskTTL: 60 * time.Millisecond}))
+	created := env.create(t, "tool_error") // the tool sets no ttl
+	require.NotNil(t, created.TTLMs)
+	assert.EqualValues(t, 60, *created.TTLMs)
+	env.waitStatus(t, created.TaskID, "completed")
+	time.Sleep(150 * time.Millisecond)
+	res := env.c.call("tasks/get", map[string]any{keyTaskID: created.TaskID})
+	require.NotNil(t, res.Error, "the task is gone after the default ttl")
+}
+
+func TestTaskStopsWaitingForInput(t *testing.T) {
+	env := newTaskEnv(t, withTasks(map[string]any{mcp.CapRoots: map[string]any{}}), mcp.WithLimits(mcp.Limits{TaskInputTimeout: 50 * time.Millisecond}))
+	created := env.create(t, "roots")
+	done := env.waitStatus(t, created.TaskID, "completed")
+	assert.Equal(t, true, done.Result["isError"], "an unanswered question ends the task")
 }
