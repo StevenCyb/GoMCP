@@ -78,7 +78,9 @@ func TestPrepareWritesOverlayAndCleansUp(t *testing.T) {
 	assert.FileExists(t, filepath.Join(pr.tmp, "main.go"))
 	overlay, err := os.ReadFile(pr.overlay)
 	require.NoError(t, err)
-	var parsed struct{ Replace map[string]string }
+	var parsed struct {
+		Replace map[string]string `json:"Replace"` //nolint:tagliatelle // the key is defined by the Go build overlay format
+	}
 	require.NoError(t, json.Unmarshal(overlay, &parsed))
 	require.Len(t, parsed.Replace, 1)
 	for from, to := range parsed.Replace { // JSON escapes backslashes, so look at the decoded paths
