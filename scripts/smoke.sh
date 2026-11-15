@@ -10,7 +10,13 @@ VERSION="${1:?usage: smoke.sh <tag or commit sha>}"
 MODULE=github.com/StevenCyb/GoMCP
 WORK="$(mktemp -d)"
 PORT="${PORT:-18765}"
-trap 'kill "${PID:-0}" 2>/dev/null || true; rm -rf "$WORK"' EXIT
+cleanup() {
+  kill "${PID:-0}" 2>/dev/null || true
+  wait "${PID:-0}" 2>/dev/null || true
+  cd / # Windows cannot delete the working directory of a running shell
+  rm -rf "$WORK" 2>/dev/null || true # a leftover temp directory must not fail the test
+}
+trap cleanup EXIT
 
 echo "== install gomcp $VERSION"
 GOBIN="$WORK/bin" go install "$MODULE/cmd/gomcp@$VERSION"
