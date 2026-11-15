@@ -162,7 +162,7 @@ func (g *gen) run(sb *strings.Builder) {
 	sb.WriteString(`
 	addr := os.Getenv("GOMCP_ADDR")
 	if addr == "" {
-		addr = ":8080"
+		addr = "127.0.0.1:8080"
 	}
 	httpSrv := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 2 * time.Minute}
 
@@ -237,9 +237,9 @@ func (g *gen) options() []string {
 		opts = append(opts, "mcp.WithPageSize("+strconv.Itoa(t.PageSize)+")")
 	}
 	if t.CacheTTL != "" {
-		scope := "mcp.CachePublic"
-		if t.CacheScope == "private" {
-			scope = "mcp.CachePrivate"
+		scope := "mcp.CachePrivate"
+		if t.CacheScope == "public" {
+			scope = "mcp.CachePublic"
 		}
 		opts = append(opts, "mcp.WithCache("+duration(t.CacheTTL)+", "+scope+")")
 	}

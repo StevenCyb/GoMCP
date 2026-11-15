@@ -81,7 +81,7 @@ func (c *collector) cache(ann located) {
 	scope, _ := ann.String("scope")
 	switch scope {
 	case "":
-		scope = "public"
+		scope = "private"
 	case "public", "private":
 	default:
 		c.errorf(ann.pos, "unknown cache scope %q, use public or private", scope)
