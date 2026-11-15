@@ -3,11 +3,13 @@ package runner
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -76,7 +78,15 @@ func TestPrepareWritesOverlayAndCleansUp(t *testing.T) {
 	assert.FileExists(t, filepath.Join(pr.tmp, "main.go"))
 	overlay, err := os.ReadFile(pr.overlay)
 	require.NoError(t, err)
-	assert.Contains(t, string(overlay), filepath.Join(".gomcp", "main.go"))
+	var parsed struct {
+		Replace map[string]string `json:"Replace"` //nolint:tagliatelle // the key is defined by the Go build overlay format
+	}
+	require.NoError(t, json.Unmarshal(overlay, &parsed))
+	require.Len(t, parsed.Replace, 1)
+	for from, to := range parsed.Replace { // JSON escapes backslashes, so look at the decoded paths
+		assert.Equal(t, filepath.Join(dir, ".gomcp", "main.go"), from)
+		assert.Equal(t, filepath.Join(pr.tmp, "main.go"), to)
+	}
 	assert.NoDirExists(t, filepath.Join(dir, ".gomcp"), "nothing is written into the module")
 
 	pr.cleanup()
@@ -175,7 +185,9 @@ func TestProcessStopInterruptsTheServer(t *testing.T) {
 	default:
 		t.Fatal("stop returned before the process exited")
 	}
-	require.NoError(t, p.err, "a graceful shutdown exits with 0")
+	if runtime.GOOS != "windows" { // Windows cannot send an interrupt, stop kills the process there
+		require.NoError(t, p.err, "a graceful shutdown exits with 0")
+	}
 
 	p.stop() // stopping an exited process is a no-op
 }

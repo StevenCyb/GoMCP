@@ -79,7 +79,10 @@ func TestWatchKeepsRunningWithABrokenDotEnv(t *testing.T) {
 
 func TestUnusableTempDir(t *testing.T) {
 	dir := demoModule(t)
-	t.Setenv("TMPDIR", filepath.Join(t.TempDir(), "missing"))
+	missing := filepath.Join(t.TempDir(), "missing")
+	for _, name := range []string{"TMPDIR", "TMP", "TEMP"} { // TMPDIR on Unix, TMP and TEMP on Windows
+		t.Setenv(name, missing)
+	}
 	o := runner.Options{Dir: dir, Stdout: io.Discard, Stderr: io.Discard}
 
 	require.ErrorContains(t, runner.Serve(t.Context(), o), "create temp dir")
