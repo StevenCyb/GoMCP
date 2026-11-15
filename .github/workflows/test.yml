@@ -8,6 +8,7 @@ on:
 
 jobs:
   test:
+    timeout-minutes: 10
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
@@ -19,7 +20,7 @@ jobs:
       - run: go build ./...
       - run: go vet ./...
       # the runner tests build and run generated servers, so they need a few minutes
-      - run: go test -race ./...
+      - run: go test -race -timeout 5m ./...
 
       # example is its own module; it must keep compiling against the runtime
       - run: go vet ./...
@@ -28,6 +29,7 @@ jobs:
   # Windows is a release target. This job is informative and not a required check:
   # it shows early when a change breaks the build or the tests there.
   test-windows:
+    timeout-minutes: 10
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
@@ -37,9 +39,10 @@ jobs:
           go-version-file: go.mod
 
       - run: go build ./...
-      - run: go test ./...
+      - run: go test -timeout 5m ./...
 
   lint:
+    timeout-minutes: 10
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
@@ -58,6 +61,7 @@ jobs:
   smoke:
     needs: [test, lint]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    timeout-minutes: 10
     runs-on: ubuntu-24.04
     env:
       GOPRIVATE: github.com/StevenCyb/GoMCP # fetch the commit directly, the proxy and checksum database lag
