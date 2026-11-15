@@ -182,7 +182,7 @@ package api
 		Icons:        []project.Icon{{Src: "assets/s.png", MIME: "image/png", Sizes: []string{"48x48", "96x96"}, Theme: "dark"}},
 	}, p.Server)
 	assert.Equal(t, project.Transport{
-		Endpoint: "/rpc", AllowedOrigins: []string{"https://a", "https://b"}, KeepAlive: "5s", PageSize: 10, CacheTTL: "1m", CacheScope: "public",
+		Endpoint: "/rpc", AllowedOrigins: []string{"https://a", "https://b"}, KeepAlive: "5s", PageSize: 10, CacheTTL: "1m", CacheScope: "private",
 	}, p.Transport)
 }
 

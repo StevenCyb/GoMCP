@@ -158,7 +158,7 @@ flowchart LR
 
 ### Flags and environment
 
-`--tags/-t` forwards build tags. `serve` and `watch` also take `--dotenv/-e` (default `<module>/.env`; real environment wins) and `--addr/-a` (sets `GOMCP_ADDR`, default `:8080`).
+`--tags/-t` forwards build tags. `serve` and `watch` also take `--dotenv/-e` (default `<module>/.env`; real environment wins) and `--addr/-a` (sets `GOMCP_ADDR`, default `127.0.0.1:8080`, loopback only; set it to expose the server and configure `@MCP.Auth` first).
 
 ```sh
 gomcp serve ./example --addr 127.0.0.1:8765 --dotenv ./dev.env
@@ -209,7 +209,7 @@ package api
 
 ### Caching hints
 
-Tells clients how long discover, list and read results may be reused (`ttlMs`) and by whom (`cacheScope`: `public` or `private`).
+Tells clients how long discover, list and read results may be reused (`ttlMs`) and by whom (`cacheScope`: `private` by default, `public` only if you say `scope="public"`).
 
 ```go
 // @MCP.Cache("5m", scope="private")
@@ -347,6 +347,8 @@ Hints tell clients what a tool does (`readOnly`, `destructive`, `idempotent`, `o
 ### Results and errors
 
 Return a struct (structured + text), a string, or `mcp.Result[T]` to add content such as links. `mcp.ToolError` is shown to the model; protocol errors go to the client.
+
+> Any error a tool returns, not only `mcp.ToolError`, is sent to the model as text. Never put secrets, DSNs or file paths in error messages.
 
 ```go
 func Get(ctx mcp.Context, in IDIn) (mcp.Result[Note], error) {
@@ -529,6 +531,8 @@ sequenceDiagram
     Note over S: a tool calls ctx.ResourceUpdated(uri)
     S-->>C: notifications/resources/updated
 ```
+
+> `ctx.ResourceUpdated(uri)` reaches every listener subscribed to that exact URI (subject to the scopes of the resource). Per-user data needs per-user URIs that the resource handler authorizes via `ctx.Principal()`.
 
 ## Prompts and completion
 
