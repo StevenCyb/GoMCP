@@ -87,6 +87,35 @@ func TestServe(t *testing.T) {
 	assert.Empty(t, f.opts.Addr)
 }
 
+func TestStdioCommand(t *testing.T) {
+	f := &fakeActions{}
+	code, _, stderr := execute(t, f, "stdio", "./example", "--tags", "dev", "--dotenv", "x.env")
+	require.Equal(t, 0, code, stderr)
+	assert.Equal(t, []string{cmdServe}, f.calls, "stdio runs the server like serve does, over stdin and stdout")
+	assert.True(t, f.opts.Stdio)
+	assert.Equal(t, "./example", f.opts.Dir)
+	assert.Equal(t, "dev", f.opts.Tags)
+	assert.Equal(t, "x.env", f.opts.DotEnv)
+	assert.Empty(t, f.opts.Addr, "there is no listen address over stdio")
+}
+
+func TestStdioCommandHasNoAddressFlag(t *testing.T) {
+	f := &fakeActions{}
+	code, _, stderr := execute(t, f, "stdio", "./example", "--addr", ":1")
+	if code == 0 { // the command line library may ignore unknown flags
+		assert.Empty(t, f.opts.Addr)
+	} else {
+		assert.NotEmpty(t, stderr)
+	}
+}
+
+func TestServeIsNotStdio(t *testing.T) {
+	f := &fakeActions{}
+	code, _, stderr := execute(t, f, cmdServe, "./example")
+	require.Equal(t, 0, code, stderr)
+	assert.False(t, f.opts.Stdio)
+}
+
 func TestServeAndWatchFlags(t *testing.T) {
 	for _, command := range []string{cmdServe, "watch"} {
 		t.Run(command, func(t *testing.T) {

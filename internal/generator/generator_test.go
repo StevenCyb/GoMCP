@@ -213,9 +213,9 @@ func TestLifecycleAndAssets(t *testing.T) {
 	assert.Contains(t, src, "api.Teardown()")
 	assert.Contains(t, src, `mux.Handle("/assets/", http.FileServerFS(api.Assets))`)
 
-	// setup before serving, teardown after shutdown
-	assert.Less(t, indexOf(src, "api.Setup()"), indexOf(src, "ListenAndServe"))
-	assert.Less(t, indexOf(src, "Shutdown("), indexOf(src, "api.Teardown()"))
+	// setup before serving, teardown after serving has ended
+	assert.Less(t, indexOf(src, "api.Setup()"), indexOf(src, "if useStdio()"))
+	assert.Less(t, indexOf(src, "serveHTTP(ctx, srv, mux)"), indexOf(src, "api.Teardown()"))
 }
 
 func TestImportAliases(t *testing.T) {
@@ -296,4 +296,24 @@ func TestNamesWithQuotesCannotBreakTheGeneratedSource(t *testing.T) {
 	p.Tools = []project.Tool{{Common: project.Common{Func: fn("Do"), Name: "a\"b\nc"}}}
 	src := gen(t, p) // gen fails when the source does not parse
 	assert.NotContains(t, src, `"resource x:///{id}"+os.Getenv`)
+}
+
+func TestGeneratedServerCanServeOverStdio(t *testing.T) {
+	src := gen(t, base())
+	assert.Contains(t, src, "func useStdio() bool", "the transport is chosen when the binary starts")
+	assert.Contains(t, src, `"--stdio"`)
+	assert.Contains(t, src, `GOMCP_TRANSPORT`)
+	assert.Contains(t, src, "srv.ServeStdio(ctx, os.Stdin, os.Stdout)")
+	assert.Contains(t, src, "serveHTTP(ctx, srv, mux)", "HTTP stays the default")
+}
+
+func TestStdioDoesNotSkipSetupAndTeardown(t *testing.T) {
+	p := base()
+	p.Setup = []project.Setup{{FuncRef: fn("Start")}}
+	p.Teardown = []project.FuncRef{fn("Stop")}
+	src := gen(t, p)
+	setup, serve, teardown := strings.Index(src, "api.Start()"), strings.Index(src, "srv.ServeStdio"), strings.Index(src, "api.Stop()")
+	require.Positive(t, setup)
+	assert.Less(t, setup, serve, "setup runs before either transport starts")
+	assert.Greater(t, teardown, serve, "teardown runs after either transport stopped")
 }

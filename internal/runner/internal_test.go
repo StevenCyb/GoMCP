@@ -47,6 +47,12 @@ func TestEnvironment(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "GOMCP_ADDR=127.0.0.1:1", env[len(env)-1])
 	})
+	t.Run("stdio selects the transport of the server and wins over the .env file", func(t *testing.T) {
+		env, err := environment(Options{Dir: dir, Stdio: true, Addr: "127.0.0.1:1"})
+		require.NoError(t, err)
+		assert.Equal(t, "GOMCP_TRANSPORT=stdio", env[len(env)-1])
+		assert.NotContains(t, env, "GOMCP_ADDR=127.0.0.1:1", "there is no listen address over stdio")
+	})
 	t.Run("explicit dotenv", func(t *testing.T) {
 		other := filepath.Join(t.TempDir(), "custom.env")
 		require.NoError(t, os.WriteFile(other, []byte("CUSTOM=yes\n"), 0o600))

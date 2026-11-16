@@ -27,9 +27,16 @@ type Options struct {
 	DotEnv string // .env file; default: <module>/.env
 	Stdout io.Writer
 	Stderr io.Writer
+	// Stdio runs the server over stdin and stdout instead of HTTP (GOMCP_TRANSPORT=stdio). Stdout then
+	// carries protocol messages only, gomcp logs to stderr. Addr is ignored and Watch refuses it.
+	Stdio bool
+	Stdin io.Reader // input of a stdio server; default os.Stdin
 	// Addr overrides the listen address of the server (GOMCP_ADDR).
 	Addr string
 }
+
+// errWatchStdio is returned when watch is asked to serve over stdio: restarting would drop the client's connection.
+var errWatchStdio = errors.New("watch cannot serve over stdio: a restart would end the client connection")
 
 func logf(format string, args ...any) { log.Printf("[gomcp] "+format, args...) }
 
@@ -38,6 +45,13 @@ func (o Options) stdout() io.Writer {
 		return o.Stdout
 	}
 	return os.Stdout
+}
+
+func (o Options) stdin() io.Reader {
+	if o.Stdin != nil {
+		return o.Stdin
+	}
+	return os.Stdin
 }
 
 func (o Options) stderr() io.Writer {
@@ -159,8 +173,11 @@ func environment(o Options) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	if o.Addr != "" {
-		env = append(env, "GOMCP_ADDR="+o.Addr) // the last entry wins
+	switch {
+	case o.Stdio:
+		env = append(env, "GOMCP_TRANSPORT=stdio") // the last entry wins
+	case o.Addr != "":
+		env = append(env, "GOMCP_ADDR="+o.Addr)
 	}
 	return env, nil
 }

@@ -159,37 +159,8 @@ func (g *gen) run(sb *strings.Builder) {
 		}
 	}
 
-	sb.WriteString(`
-	addr := os.Getenv("GOMCP_ADDR")
-	if addr == "" {
-		addr = "127.0.0.1:8080"
-	}
-	httpSrv := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 2 * time.Minute}
-
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-	errCh := make(chan error, 1)
-	go func() {
-		if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			errCh <- err
-		}
-	}()
-`)
-	fmt.Fprintf(sb, "\tlog.Printf(\"MCP server %%q listening on %%s%%s\", %s, addr, %s)\n", q(p.Server.Name), q(p.Transport.Endpoint))
-	sb.WriteString(`
-	var runErr error
-	select {
-	case <-ctx.Done():
-	case runErr = <-errCh:
-	}
-
-	srv.Close()
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	if err := httpSrv.Shutdown(shutdownCtx); err != nil && runErr == nil {
-		runErr = err
-	}
-`)
+	fmt.Fprintf(sb, "\n\tctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)\n\tdefer stop()\n\n")
+	fmt.Fprintf(sb, "\tvar runErr error\n\tif useStdio() {\n\t\tlog.Printf(\"MCP server %%q on stdin and stdout\", %s)\n\t\trunErr = srv.ServeStdio(ctx, os.Stdin, os.Stdout)\n\t} else {\n\t\trunErr = serveHTTP(ctx, srv, mux)\n\t}\n", q(p.Server.Name))
 	for _, t := range p.Teardown {
 		fmt.Fprintf(sb, "\t%s()\n", g.ref(t))
 	}
@@ -468,5 +439,46 @@ func (g *gen) helpers(sb *strings.Builder) {
 }
 
 func ptrTo[T any](v T) *T { return &v }
+
+// useStdio reports whether the server talks over stdin and stdout instead of HTTP.
+func useStdio() bool {
+	for _, arg := range os.Args[1:] {
+		if arg == "--stdio" {
+			return true
+		}
+	}
+	return os.Getenv("GOMCP_TRANSPORT") == "stdio"
+}
+
 `)
+	fmt.Fprintf(sb, `// serveHTTP serves the endpoint until ctx ends, then shuts down gracefully.
+func serveHTTP(ctx context.Context, srv *mcp.Server, handler http.Handler) error {
+	addr := os.Getenv("GOMCP_ADDR")
+	if addr == "" {
+		addr = "127.0.0.1:8080"
+	}
+	httpSrv := &http.Server{Addr: addr, Handler: handler, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 2 * time.Minute}
+	errCh := make(chan error, 1)
+	go func() {
+		if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			errCh <- err
+		}
+	}()
+	log.Printf("MCP server %%q listening on %%s%%s", %s, addr, %s)
+
+	var runErr error
+	select {
+	case <-ctx.Done():
+	case runErr = <-errCh:
+	}
+
+	srv.Close()
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := httpSrv.Shutdown(shutdownCtx); err != nil && runErr == nil {
+		runErr = err
+	}
+	return runErr
+}
+`, q(g.p.Server.Name), q(g.p.Transport.Endpoint))
 }

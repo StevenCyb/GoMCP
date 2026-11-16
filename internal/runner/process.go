@@ -26,6 +26,9 @@ func start(ctx context.Context, bin string, env []string, o Options) (*process, 
 	cmd.Env = env
 	cmd.Stdout = o.stdout()
 	cmd.Stderr = o.stderr()
+	if o.Stdio {
+		cmd.Stdin = o.stdin()
+	}
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("start server: %w", err)
 	}
