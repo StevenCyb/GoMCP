@@ -12,12 +12,16 @@ Go. Write plain handler functions, sprinkle `@MCP.*` comments on top, and
 GoMCP generates a runnable `main` package serving a spec-compliant
 Streamable HTTP MCP endpoint with tools, resources and prompts.
 
+**Run it where you want: remote or local.** The same annotated code runs as an HTTP server that many clients
+reach over the network, or as a local process that one client (Claude Desktop, an IDE, an agent) starts itself
+over stdin and stdout. You pick when you start it, the code does not change.
+
 **Supported spec: MCP [2026-07-28](https://modelcontextprotocol.io/specification/2026-07-28)** — the stateless
 revision (no sessions, no `initialize`, every request carries its protocol version and client capabilities).
 Older revisions are not supported.
 
 > **Status: v0.x.** The exported API of `pkg/mcp` may still change between minor versions. Requires Go 1.26.2 or newer.
-> Release binaries for Windows are not tested yet. Code snippets in this document are abbreviated; runnable code is in [`example/`](example).
+> Code snippets in this document are abbreviated; runnable code is in [`example/`](example).
 
 ## See It In 5 Seconds
 
@@ -70,6 +74,8 @@ The binary is called `gomcp`.
 - [CLI](#cli)
   - [build, serve and watch](#build-serve-and-watch)
   - [Flags and environment](#flags-and-environment)
+- [Transports](#transports)
+  - [Local or remote](#local-or-remote)
 - [Server](#server)
   - [Identity and instructions](#identity-and-instructions)
   - [Stateless requests](#stateless-requests)
@@ -105,6 +111,7 @@ The binary is called `gomcp`.
   - [Options](#options)
   - [Errors](#errors)
   - [What is automatic and what is not](#what-is-automatic-and-what-is-not)
+- [Contributing](#contributing)
 
 ## Basics
 
@@ -140,12 +147,13 @@ flowchart LR
 
 ### build, serve and watch
 
-`build` compiles a single binary, `serve` builds and runs once, `watch` rebuilds and restarts on every `.go` change and keeps the old server if a rebuild fails.
+`build` compiles a single binary, `serve` builds and runs it as an HTTP server, `watch` rebuilds and restarts on every `.go` change and keeps the old server if a rebuild fails. `stdio` builds and runs it for a local client, see [Local or remote](#local-or-remote).
 
 ```sh
-gomcp build ./example ./bin/notes   # one binary
-gomcp serve ./example               # build + run, Ctrl-C stops gracefully
-gomcp watch ./example               # rebuild on change
+gomcp build ./example ./bin/notes   # one binary, contains both transports
+gomcp serve ./example               # build + run over HTTP, Ctrl-C stops gracefully
+gomcp watch ./example               # rebuild on change (HTTP only)
+gomcp stdio ./example               # build + run over stdin and stdout
 gomcp version
 ```
 
@@ -158,11 +166,50 @@ flowchart LR
 
 ### Flags and environment
 
-`--tags/-t` forwards build tags. `serve` and `watch` also take `--dotenv/-e` (default `<module>/.env`; real environment wins) and `--addr/-a` (sets `GOMCP_ADDR`, default `127.0.0.1:8080`, loopback only; set it to expose the server and configure `@MCP.Auth` first).
+`--tags/-t` forwards build tags. `serve`, `watch` and `stdio` also take `--dotenv/-e` (default `<module>/.env`; real environment wins). `serve` and `watch` take `--addr/-a` (sets `GOMCP_ADDR`, default `127.0.0.1:8080`, loopback only; set it to expose the server and configure `@MCP.Auth` first).
 
 ```sh
 gomcp serve ./example --addr 127.0.0.1:8765 --dotenv ./dev.env
 ```
+
+## Transports
+
+### Local or remote
+
+One annotated project, two ways to run it. HTTP is the default and serves many clients over the network. With stdio the client starts the server as a child process and talks to it over stdin and stdout, which is how desktop clients and IDEs run local tools.
+
+```sh
+gomcp serve ./proj                  # remote: HTTP on 127.0.0.1:8080 (or --addr)
+gomcp stdio ./proj                  # local: stdin and stdout, for a client that starts it
+
+gomcp build ./proj ./bin/notes      # one binary, both ways:
+./bin/notes                         #   HTTP (default)
+./bin/notes --stdio                 #   stdio (or GOMCP_TRANSPORT=stdio)
+```
+
+```mermaid
+flowchart LR
+    subgraph remote ["Remote: HTTP"]
+        C1[client] & C2[client] -->|"POST /mcp"| S1["notes server<br/>(auth, scopes)"]
+    end
+    subgraph local ["Local: stdio"]
+        C3["client<br/>(starts the process)"] -->|"stdin / stdout"| S2["notes server<br/>(child process)"]
+    end
+```
+
+A client config for a local server. Build once and start the binary, because `gomcp stdio ./proj` compiles on every start:
+
+```json
+{ "command": "./bin/notes", "args": ["--stdio"] }
+```
+
+What changes with stdio:
+- **No authentication.** The caller is the process that started the server, so `@MCP.Auth` is ignored and `@MCP.AuthScopes` are not checked. Anyone who can start the binary can use every feature.
+- **One client per process.** There are no HTTP headers, origins or listen address (`--addr` does not apply).
+- **Only protocol messages on stdout.** Log to stderr (the `log` package does). A `fmt.Println` in your code or setup breaks the connection.
+- **No `gomcp watch`.** A restart would end the client's connection, so `watch` refuses stdio.
+- **Relative icons are left out.** They need the server's URL, which stdio does not have. Use absolute or `data:` URLs.
+- **Same behaviour otherwise.** Tools, resources, prompts, elicitation, sampling, roots, tasks and `subscriptions/listen` work the same. A listen request stays open until the client cancels it with `notifications/cancelled`, and a cancelled request gets no response.
 
 ## Server
 
@@ -197,7 +244,7 @@ sequenceDiagram
 
 ### Transport settings
 
-One endpoint, POST only (GET and DELETE answer `405`). Origins are checked (`403`), lists are paged, listen streams get keep-alive comments.
+These settings apply to HTTP; over stdio there is no endpoint, origin or keep-alive ([Local or remote](#local-or-remote)). One endpoint, POST only (GET and DELETE answer `405`). Origins are checked (`403`), lists are paged, listen streams get keep-alive comments.
 
 ```go
 // @MCP.Endpoint("/mcp")
@@ -280,7 +327,7 @@ func VerifyAPIKey(ctx context.Context, token string) (mcp.Principal, error) {
 
 ### OAuth resource server
 
-gomcp verifies tokens, it never issues them. It serves the protected resource metadata, challenges unauthenticated calls and checks scopes. Needs `resource=`, an authorization server and scopes.
+gomcp verifies tokens, it never issues them. Authentication belongs to HTTP: over stdio it is ignored ([Local or remote](#local-or-remote)). It serves the protected resource metadata, challenges unauthenticated calls and checks scopes. Needs `resource=`, an authorization server and scopes.
 
 ```go
 // @MCP.Auth(type="oauth", resource="https://notes.example.com/mcp")

@@ -14,6 +14,8 @@ Please do not open a public issue. Use GitHub's private vulnerability reporting
 - Any error a tool returns, not only `mcp.ToolError`, is sent to the model as text. Never put secrets, DSNs or paths in it.
 - `ctx.ResourceUpdated(uri)` reaches every listener subscribed to that exact URI (subject to the resource scopes). Use
   per-user URIs and authorize them in the resource handler via `ctx.Principal()`.
+- Over stdio (`gomcp stdio`, `--stdio`, `GOMCP_TRANSPORT=stdio`) there is no authentication and scopes are not checked: the
+  caller is the process that started the server. Only start it for clients you trust, and do not wire it to a network socket.
 - `example/` uses a stub token verifier that accepts every non-empty token. Never copy it into production.
 - Features of the example that check scopes (`@MCP.AuthScopes`) apply to tools, prompts, resources, completion and
   resource subscriptions.
