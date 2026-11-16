@@ -65,7 +65,7 @@ echo "$OUT" | grep -q '"name":"hello"' || { echo "FAIL: stdio tools/list: $OUT";
 [ "$(echo "$OUT" | wc -l | tr -d ' ')" = "1" ] || { echo "FAIL: stdout carries more than the response: $OUT"; exit 1; }
 
 echo "== stdio (built binary)"
-BIN="$WORK/app$(go env GOEXE)"
+BIN="$WORK/smoke-server$(go env GOEXE)" # not app: that is the module directory
 "$WORK/bin/gomcp" build . "$BIN"
 
 # stdio_check <label> <command...>: sends one request on stdin, expects exactly the tools/list response on stdout
