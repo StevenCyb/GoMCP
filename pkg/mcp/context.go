@@ -73,6 +73,7 @@ type callContext struct {
 	meta      transport.Meta
 	caps      clientCaps
 	principal Principal
+	trusted   bool // the caller needs no scopes: calls over stdio come from the process that started the server
 
 	// multi round-trip state of this request
 	responses map[string]json.RawMessage
@@ -91,7 +92,7 @@ func (s *Server) newContext(call *transport.Call) *callContext {
 	_ = json.Unmarshal(meta.Capabilities, &caps)
 	p, _ := call.Principal().(Principal)
 	return &callContext{
-		Context: call.Context(), srv: s, call: call, meta: meta, caps: caps, principal: p,
+		Context: call.Context(), srv: s, call: call, meta: meta, caps: caps, principal: p, trusted: call.Trusted(),
 		responses: map[string]json.RawMessage{}, state: map[string]string{}, counters: map[string]int{}, stateOut: map[string]string{},
 	}
 }

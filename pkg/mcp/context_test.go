@@ -401,7 +401,7 @@ func TestRequestStateIsProtected(t *testing.T) {
 	state, key := firstRound(t, c)
 	answers := map[string]any{key: map[string]any{keyAction: valAccept}}
 
-	good := c.once("tools/call", map[string]any{keyName: "t", "inputResponses": answers, "requestState": state}, nil)
+	good := c.once("tools/call", map[string]any{keyName: "t", "inputResponses": answers, keyState: state}, nil)
 	require.Nil(t, good.Error)
 
 	for name, token := range map[string]string{
@@ -410,7 +410,7 @@ func TestRequestStateIsProtected(t *testing.T) {
 		"no mac":    state[:len(state)/2],
 		"empty mac": state[:len(state)-len(state[len(state)-43:])],
 	} {
-		res := c.once("tools/call", map[string]any{keyName: "t", "inputResponses": answers, "requestState": token}, nil)
+		res := c.once("tools/call", map[string]any{keyName: "t", "inputResponses": answers, keyState: token}, nil)
 		require.NotNil(t, res.Error, name)
 		assert.Equal(t, rpc.CodeInvalidParams, res.Error.Code, name)
 	}
@@ -427,10 +427,10 @@ func TestRequestStateOnlyWorksForItsOwnRequest(t *testing.T) {
 	c := connect(t, newServer(t, s), map[string]any{mcp.CapElicitation: map[string]any{keyURL: map[string]any{}}})
 
 	out := result[map[string]any](t, c.once("tools/call", map[string]any{keyName: "a"}, nil))
-	state, _ := out["requestState"].(string)
+	state, _ := out[keyState].(string)
 	require.NotEmpty(t, state)
 
-	res := c.once("tools/call", map[string]any{keyName: "b", "requestState": state}, nil)
+	res := c.once("tools/call", map[string]any{keyName: "b", keyState: state}, nil)
 	require.NotNil(t, res.Error, "a state of tool a cannot be used for tool b")
 	assert.Equal(t, rpc.CodeInvalidParams, res.Error.Code)
 }
@@ -446,10 +446,10 @@ func TestRequestStateBelongsToTheCaller(t *testing.T) {
 	alice, bob := connectAs(t, srv, "reader", caps), connectAs(t, srv, "writer", caps)
 
 	out := result[map[string]any](t, alice.once("tools/call", map[string]any{keyName: "ask"}, nil))
-	state, _ := out["requestState"].(string)
+	state, _ := out[keyState].(string)
 	require.NotEmpty(t, state)
 
-	res := bob.once("tools/call", map[string]any{keyName: "ask", "requestState": state}, nil)
+	res := bob.once("tools/call", map[string]any{keyName: "ask", keyState: state}, nil)
 	require.NotNil(t, res.Error, "another caller cannot use the state")
 }
 
