@@ -19,6 +19,7 @@ import (
 )
 
 const (
+	keyMeta      = "_meta"
 	keyJSONRPC   = "jsonrpc"
 	keyMethod    = "method"
 	keyParams    = "params"
@@ -132,9 +133,9 @@ func (c *e2eClient) meta(params obj) obj {
 	out := obj{}
 	maps.Copy(out, params)
 	m := obj{metaVersion: specVersion, metaCaps: c.caps}
-	given, _ := params["_meta"].(obj)
+	given, _ := params[keyMeta].(obj)
 	maps.Copy(m, given)
-	out["_meta"] = m
+	out[keyMeta] = m
 	return out
 }
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Smoke test of a published version: installs the tool, builds a fresh module that depends on the
-# published library (no replace directive) and talks to the generated server.
+# published library (no replace directive) and talks to the generated server over HTTP and stdio.
 #
 #   scripts/smoke.sh v0.1.0        # a release tag
 #   GOPRIVATE=github.com/StevenCyb/GoMCP scripts/smoke.sh <commit sha>   # a pushed commit, as CI does after a merge
@@ -58,4 +58,18 @@ call() { # method, params, name header
 echo "== check"
 call tools/list "" | grep -q '"name":"hello"' || { echo "FAIL: tools/list"; cat "$WORK/serve.log"; exit 1; }
 call tools/call '"name":"hello","arguments":{"name":"world"},' hello | grep -q 'Hello world' || { echo "FAIL: tools/call"; exit 1; }
-echo "OK: $VERSION works from a fresh module"
+echo "== stdio (gomcp stdio)"
+LIST='{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{'"$META"'}}'
+OUT="$(printf '%s\n' "$LIST" | "$WORK/bin/gomcp" stdio . 2>"$WORK/stdio.log")" || { echo "FAIL: gomcp stdio"; cat "$WORK/stdio.log"; exit 1; }
+echo "$OUT" | grep -q '"name":"hello"' || { echo "FAIL: stdio tools/list: $OUT"; cat "$WORK/stdio.log"; exit 1; }
+[ "$(echo "$OUT" | wc -l | tr -d ' ')" = "1" ] || { echo "FAIL: stdout carries more than the response: $OUT"; exit 1; }
+
+echo "== stdio (built binary)"
+BIN="$WORK/app$(go env GOEXE)"
+"$WORK/bin/gomcp" build . "$BIN"
+OUT="$(printf '%s\n' "$LIST" | "$BIN" --stdio 2>/dev/null)" || { echo "FAIL: built binary with --stdio"; exit 1; }
+echo "$OUT" | grep -q '"name":"hello"' || { echo "FAIL: --stdio tools/list: $OUT"; exit 1; }
+OUT="$(printf '%s\n' "$LIST" | GOMCP_TRANSPORT=stdio "$BIN" 2>/dev/null)" || { echo "FAIL: built binary with GOMCP_TRANSPORT=stdio"; exit 1; }
+echo "$OUT" | grep -q '"name":"hello"' || { echo "FAIL: GOMCP_TRANSPORT tools/list: $OUT"; exit 1; }
+
+echo "OK: $VERSION works from a fresh module over HTTP and stdio"

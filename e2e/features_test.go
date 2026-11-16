@@ -89,7 +89,7 @@ func TestFeatures(t *testing.T) {
 		for _, name := range []string{"tools", "resources", "prompts", "completions"} {
 			assert.Contains(t, caps, name)
 		}
-		info, _ := res["_meta"].(obj)["io.modelcontextprotocol/serverInfo"].(obj)
+		info, _ := res[keyMeta].(obj)["io.modelcontextprotocol/serverInfo"].(obj)
 		assert.Equal(t, "notes", info[keyName])
 		assert.Equal(t, "Notes MCP Example", info["title"])
 		assert.Equal(t, "1.0.0", info["version"])
@@ -103,7 +103,7 @@ func TestFeatures(t *testing.T) {
 		assert.InDelta(t, -32020, bad["code"], 0, "header mismatch")
 
 		// an unknown protocol version is refused with the supported ones
-		params := obj{"_meta": obj{metaVersion: "1999-01-01", metaCaps: obj{}}}
+		params := obj{keyMeta: obj{metaVersion: "1999-01-01", metaCaps: obj{}}}
 		_, unsupported := c.raw("tools/list", params, map[string]string{"Mcp-Protocol-Version": "1999-01-01"})
 		require.NotNil(t, unsupported)
 		assert.InDelta(t, -32022, unsupported["code"], 0)
@@ -162,7 +162,7 @@ func TestFeatures(t *testing.T) {
 		}
 		assert.Equal(t, obj{"destructiveHint": true}, byName["delete_note"]["annotations"])
 		assert.Equal(t, obj{"readOnlyHint": true, "idempotentHint": true}, byName["get_note"]["annotations"])
-		assert.Equal(t, obj{"team": "docs"}, byName["add_note"]["_meta"])
+		assert.Equal(t, obj{"team": "docs"}, byName["add_note"][keyMeta])
 		input, _ := byName["add_note"]["inputSchema"].(obj)
 		props, _ := input["properties"].(obj)
 		assert.Equal(t, []any{keyText}, input["required"])
@@ -208,7 +208,7 @@ func TestFeatures(t *testing.T) {
 		quiet := c.tool("add_note", obj{keyText: "quiet"})
 		assert.False(t, isError(quiet))
 		assert.Empty(t, notesOf(c.notes, "notifications/message"))
-		res, err2 := c.call("tools/call", obj{keyName: "add_note", keyArguments: obj{keyText: "loud"}, "_meta": obj{"io.modelcontextprotocol/logLevel": "info"}})
+		res, err2 := c.call("tools/call", obj{keyName: "add_note", keyArguments: obj{keyText: "loud"}, keyMeta: obj{"io.modelcontextprotocol/logLevel": "info"}})
 		require.Nil(t, err2)
 		assert.False(t, isError(res))
 		assert.NotEmpty(t, notesOf(c.notes, "notifications/message"), "the tool logs when the request has a log level")
@@ -388,7 +388,7 @@ func TestFeatures(t *testing.T) {
 			assert.Equal(t, "roots/list", method)
 			return obj{"roots": []any{obj{keyURI: "file:///work/a"}, obj{keyURI: "file:///work/b"}}}
 		}
-		res, rpcErr := c.call("tools/call", obj{keyName: toolImport, keyArguments: obj{}, "_meta": obj{"progressToken": "tok"}})
+		res, rpcErr := c.call("tools/call", obj{keyName: toolImport, keyArguments: obj{}, keyMeta: obj{"progressToken": "tok"}})
 		require.Nil(t, rpcErr)
 		c.used.tools[toolImport] = true
 		assert.False(t, isError(res), "%v", res)
