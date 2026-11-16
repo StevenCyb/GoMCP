@@ -50,6 +50,9 @@ func snapshot(root string) map[string]fileState {
 // Watch builds and runs the server and rebuilds it whenever a source file changes, until
 // ctx is cancelled. A failed rebuild keeps the previous server running.
 func Watch(ctx context.Context, o Options) error {
+	if o.Stdio {
+		return errWatchStdio
+	}
 	root, _, err := parser.FindModule(o.Dir)
 	if err != nil {
 		return fmt.Errorf("%w: %w", errNoModule, err)

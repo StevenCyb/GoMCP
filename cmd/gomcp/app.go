@@ -120,6 +120,27 @@ func newApp(ctx context.Context, stdout, stderr io.Writer, a actions) *cli.CLI {
 			),
 		),
 		cli.Command(
+			"stdio",
+			cli.Description("Builds and runs the project over stdin and stdout, for clients that start the server themselves."),
+			cli.Argument(
+				argProject,
+				cli.Description("Path to the root of the Go project."),
+				cli.Option(optTags, cli.Short('t'), cli.Default(""), cli.Description("Build tags for go build.")),
+				cli.Option(optDotEnv, cli.Short('e'), cli.Default(""),
+					cli.Description("Path to a .env file for the server process (default: <project_path>/.env).")),
+				cli.Handler(func(c *cli.Context) error {
+					return a.serve(ctx, runner.Options{
+						Dir:    *c.GetArgument(argProject),
+						Tags:   *c.GetOption(optTags),
+						DotEnv: *c.GetOption(optDotEnv),
+						Stdio:  true,
+						Stdout: stdout,
+						Stderr: stderr,
+					})
+				}),
+			),
+		),
+		cli.Command(
 			"watch",
 			cli.Description("Runs the project and restarts it on every change."),
 			cli.Argument(

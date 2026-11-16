@@ -1,5 +1,6 @@
-// Package mcp is a Model Context Protocol server over Streamable HTTP, implementing the
-// 2026-07-28 revision of the specification.
+// Package mcp is a Model Context Protocol server over Streamable HTTP or stdio, implementing the
+// 2026-07-28 revision of the specification. Serve it as an http.Handler (remote clients) or with
+// Server.ServeStdio (a client that starts the process).
 //
 // Handlers are plain Go functions that take a Context and a typed input and return a
 // typed output; they are registered with AddTool, AddResource and AddPrompt. The
@@ -10,6 +11,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"sync"
 
@@ -79,6 +81,15 @@ func NewServer(info Info, opts ...Option) *Server {
 
 // ServeHTTP implements http.Handler.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) { s.transport.ServeHTTP(w, r) }
+
+// ServeStdio serves the stdio transport: newline-delimited JSON-RPC messages on in and out, until in
+// ends or ctx is cancelled. The caller is the process that started the server, so there is no
+// authentication and scopes are not checked. Nothing but protocol messages may be written to out: log
+// to stderr. It closes the server when it returns.
+func (s *Server) ServeStdio(ctx context.Context, in io.Reader, out io.Writer) error {
+	defer s.Close()
+	return s.transport.ServeStdio(ctx, in, out) //nolint:wrapcheck // the transport error is already descriptive
+}
 
 // Close ends the subscriptions and cancels running tasks. Call it before shutting the HTTP server down.
 func (s *Server) Close() {

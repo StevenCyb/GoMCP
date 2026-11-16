@@ -4,8 +4,11 @@ A notes server that uses every GoMCP feature once. The annotations are the
 documentation: read a file next to the README section named below.
 
 ```sh
-gomcp serve ./example     # MCP endpoint on http://localhost:8080/mcp
+gomcp serve ./example     # MCP endpoint on http://127.0.0.1:8080/mcp
+gomcp stdio ./example     # the same server over stdin and stdout, for a client that starts it
 ```
+
+Over stdio there is no authentication (see "Local or remote" in the main README).
 
 The OAuth verifier in `auth.go` is a **stub**: it accepts any non-empty bearer
 token. Never use it as it is. `e2e/` builds and runs this example and checks

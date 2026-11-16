@@ -69,7 +69,7 @@ func promptsServer(t *testing.T, opts ...mcp.Option) (*mcp.Server, *testClient) 
 
 func getPrompt(t *testing.T, c *testClient, name string, args map[string]any) rpc.Message {
 	t.Helper()
-	return c.call("prompts/get", map[string]any{keyName: name, "arguments": args})
+	return c.call("prompts/get", map[string]any{keyName: name, keyArgs: args})
 }
 
 func TestPromptsList(t *testing.T) {
@@ -177,7 +177,7 @@ func complete(t *testing.T, c *testClient, ref map[string]any, arg, value string
 	return c.call("completion/complete", map[string]any{
 		"ref":      ref,
 		"argument": map[string]any{keyName: arg, "value": value},
-		"context":  map[string]any{"arguments": resolved},
+		"context":  map[string]any{keyArgs: resolved},
 	})
 }
 

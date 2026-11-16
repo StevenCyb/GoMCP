@@ -155,7 +155,7 @@ func (s *Server) agree(ctx *callContext, f subscriptionFilter) subscriptionFilte
 		ToolsListChanged: f.ToolsListChanged, PromptsListChanged: f.PromptsListChanged, ResourcesListChanged: f.ResourcesListChanged,
 	}
 	for _, uri := range f.ResourceSubscriptions {
-		if r, _ := s.findResource(uri); r != nil && r.def.Subscribable && hasScopes(ctx.principal, r.def.Scopes) {
+		if r, _ := s.findResource(uri); r != nil && r.def.Subscribable && (ctx.trusted || hasScopes(ctx.principal, r.def.Scopes)) {
 			agreed.ResourceSubscriptions = append(agreed.ResourceSubscriptions, uri)
 		}
 	}

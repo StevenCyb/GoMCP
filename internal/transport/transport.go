@@ -245,6 +245,9 @@ func (s *Server) validate(r *http.Request, msg rpc.Message) (Request, *rpc.Error
 	if !slices.Contains(SupportedVersions(), meta.ProtocolVersion) {
 		return Request{}, rpc.UnsupportedVersion(SupportedVersions(), meta.ProtocolVersion)
 	}
+	if r == nil {
+		return req, nil // stdio has no headers to compare with
+	}
 	if got := r.Header.Get(headerVersion); got != meta.ProtocolVersion {
 		return Request{}, rpc.HeaderMismatch(headerMismatch(headerVersion, got, meta.ProtocolVersion))
 	}

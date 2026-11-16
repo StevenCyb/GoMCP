@@ -403,3 +403,8 @@ func tryToolNames(t *testing.T, url string) []string {
 	}
 	return names
 }
+
+func TestWatchRefusesStdio(t *testing.T) {
+	err := runner.Watch(t.Context(), runner.Options{Dir: t.TempDir(), Stdio: true})
+	require.ErrorContains(t, err, "stdio")
+}

@@ -20,6 +20,9 @@ const (
 	protocol            = "2026-07-28"
 	eventPrefix         = "data: "
 	keyName             = "name"
+	keyArgs             = "arguments"
+	keyState            = "requestState"
+	toolHello           = "hello"
 	keyAction           = "action"
 	valAccept           = "accept"
 	keyURL              = "url"
@@ -218,7 +221,7 @@ func (c *testClient) call(method string, params any) rpc.Message {
 		maps.Copy(next, p)
 		next["inputResponses"] = responses
 		if head.RequestState != "" {
-			next["requestState"] = head.RequestState
+			next[keyState] = head.RequestState
 		}
 		p = next
 	}

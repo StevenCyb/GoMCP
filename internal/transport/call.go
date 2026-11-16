@@ -26,6 +26,7 @@ type Call struct {
 	fl     http.Flusher
 	canSSE bool
 	req    Request
+	stdio  *stdioWriter // set for calls over stdio: there is no HTTP request or response
 
 	mu        sync.Mutex
 	streaming bool
@@ -36,10 +37,20 @@ type Call struct {
 // Context ends when the client closes the connection: that is how a request is cancelled.
 func (c *Call) Context() context.Context { return c.ctx }
 
-// Principal returns what Config.Authenticate returned for the request; nil without authentication.
-func (c *Call) Principal() any { return c.r.Context().Value(principalKey{}) }
+// Principal returns what Config.Authenticate returned for the request; nil without authentication
+// and for calls over stdio.
+func (c *Call) Principal() any {
+	if c.r == nil {
+		return nil
+	}
+	return c.r.Context().Value(principalKey{})
+}
 
-// HTTPRequest returns the underlying HTTP request (headers, TLS state, ...).
+// Trusted reports whether the caller needs no authentication: a call over stdio comes from the
+// process that started the server.
+func (c *Call) Trusted() bool { return c.stdio != nil }
+
+// HTTPRequest returns the underlying HTTP request (headers, TLS state, ...); nil for calls over stdio.
 func (c *Call) HTTPRequest() *http.Request { return c.r }
 
 // Meta returns the validated _meta of the request.
@@ -59,6 +70,9 @@ func (c *Call) send(m rpc.Message) error {
 	defer c.mu.Unlock()
 	if c.done {
 		return errCallDone
+	}
+	if c.stdio != nil {
+		return c.stdio.write(m)
 	}
 	if !c.streaming {
 		if !c.canSSE {
@@ -121,6 +135,10 @@ func (c *Call) finish(m rpc.Message) {
 		return
 	}
 	c.done = true
+	if c.stdio != nil {
+		_ = c.stdio.write(m)
+		return
+	}
 	if c.streaming {
 		close(c.stopPing)
 		_ = c.writeEvent(m)

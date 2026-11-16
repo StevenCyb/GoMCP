@@ -78,7 +78,7 @@ func toolsServer(t *testing.T, opts ...mcp.Option) (*mcp.Server, *testClient) {
 
 func callTool(t *testing.T, c *testClient, name string, args any) rpc.Message {
 	t.Helper()
-	return c.call("tools/call", map[string]any{keyName: name, "arguments": args})
+	return c.call("tools/call", map[string]any{keyName: name, keyArgs: args})
 }
 
 func TestToolsList(t *testing.T) {
@@ -273,7 +273,7 @@ func TestParamHeaders(t *testing.T) {
 	assert.Equal(t, "Region", region["x-mcp-header"])
 
 	call := func(headers map[string]string, args map[string]any) int {
-		resp := c.post("tools/call", map[string]any{keyName: "sql", "arguments": args}, headers)
+		resp := c.post("tools/call", map[string]any{keyName: "sql", keyArgs: args}, headers)
 		_ = resp.Body.Close()
 		return resp.StatusCode
 	}
