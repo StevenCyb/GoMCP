@@ -61,7 +61,8 @@ jobs:
   # so a broken module or CLI shows up before a tag is cut.
   smoke:
     needs: [test, test-windows, lint]
-    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
+    # on every push, so a feature branch is checked before it is merged (the pull request itself has no fetchable merge commit)
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     timeout-minutes: 10
     strategy:
       fail-fast: false

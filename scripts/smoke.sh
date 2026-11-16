@@ -67,9 +67,17 @@ echo "$OUT" | grep -q '"name":"hello"' || { echo "FAIL: stdio tools/list: $OUT";
 echo "== stdio (built binary)"
 BIN="$WORK/app$(go env GOEXE)"
 "$WORK/bin/gomcp" build . "$BIN"
-OUT="$(printf '%s\n' "$LIST" | "$BIN" --stdio 2>/dev/null)" || { echo "FAIL: built binary with --stdio"; exit 1; }
-echo "$OUT" | grep -q '"name":"hello"' || { echo "FAIL: --stdio tools/list: $OUT"; exit 1; }
-OUT="$(printf '%s\n' "$LIST" | GOMCP_TRANSPORT=stdio "$BIN" 2>/dev/null)" || { echo "FAIL: built binary with GOMCP_TRANSPORT=stdio"; exit 1; }
-echo "$OUT" | grep -q '"name":"hello"' || { echo "FAIL: GOMCP_TRANSPORT tools/list: $OUT"; exit 1; }
+
+# stdio_check <label> <command...>: sends one request on stdin, expects exactly the tools/list response on stdout
+stdio_check() {
+  label="$1"; shift
+  code=0
+  OUT="$(printf '%s\n' "$LIST" | "$@" 2>"$WORK/stdio.err")" || code=$?
+  if [ "$code" != 0 ] || ! echo "$OUT" | grep -q '"name":"hello"'; then
+    echo "FAIL: $label (exit $code)"; echo "stdout: $OUT"; echo "stderr:"; cat "$WORK/stdio.err"; exit 1
+  fi
+}
+stdio_check "built binary with --stdio" "$BIN" --stdio
+stdio_check "built binary with GOMCP_TRANSPORT=stdio" env GOMCP_TRANSPORT=stdio "$BIN"
 
 echo "OK: $VERSION works from a fresh module over HTTP and stdio"
