@@ -40,7 +40,7 @@ func TestRenderRejectsInvalidInput(t *testing.T) {
 func TestGoVersionMatchesRepo(t *testing.T) {
 	mod, err := os.ReadFile(filepath.Join("..", "..", "go.mod"))
 	require.NoError(t, err)
-	m := regexp.MustCompile(`(?m)^go (\S+)$`).FindSubmatch(mod)
+	m := regexp.MustCompile(`(?m)^go (\S+)\s*$`).FindSubmatch(mod)
 	require.NotNil(t, m)
 	assert.Equal(t, GoVersion, string(m[1]))
 }
