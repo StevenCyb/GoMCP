@@ -1,4 +1,4 @@
-// Feature tests: build and run example/, then check every feature of it through the test client.
+// Feature tests: build and run examples/features/, then check every feature of it through the test client.
 
 package e2e_test
 
@@ -38,7 +38,7 @@ func startExample(t *testing.T) string {
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan error, 1)
 	go func() {
-		done <- runner.Serve(ctx, runner.Options{Dir: "../example", Stdout: io.Discard, Stderr: io.Discard})
+		done <- runner.Serve(ctx, runner.Options{Dir: "../examples/features", Stdout: io.Discard, Stderr: io.Discard})
 	}()
 	t.Cleanup(func() {
 		cancel()

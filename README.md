@@ -21,7 +21,7 @@ revision (no sessions, no `initialize`, every request carries its protocol versi
 Older revisions are not supported.
 
 > **Status: v0.x.** The exported API of `pkg/mcp` may still change between minor versions. Requires Go 1.26.2 or newer.
-> Code snippets in this document are abbreviated; runnable code is in [`example/`](example).
+> Code snippets in this document are abbreviated; runnable code is in [`examples/`](examples).
 
 ## See It In 5 Seconds
 
@@ -54,7 +54,12 @@ Get:
 - Input and output schemas derived from your Go types.
 - Auto-generated bootstrap (`main`, transport, auth, lifecycle wiring).
 
-> A more advanced example for every feature is in the [example](example) directory.
+> More runnable servers are in [`examples/`](examples) (index with how to run each):
+>
+> - [`files`](examples/files): read-only directory browser for a local client over stdio.
+> - [`todo`](examples/todo): todo list kept in a JSON file, with Setup and Teardown.
+> - [`fetch`](examples/fetch): URL fetcher with an allowlist, size limit and timeout.
+> - [`features`](examples/features): every feature once.
 
 ## Why GoMCP
 
@@ -64,7 +69,7 @@ You write the handler, GoMCP writes everything around it.
 - **Nothing lands in your module.** The generated code is built with Go's overlay mechanism: no generated files to commit or review, and no `go:generate` step.
 - **Remote or local from one codebase.** The same code runs as an HTTP server for many clients (`gomcp serve`) or as a local process that one client starts (`gomcp stdio`).
 - **The newest spec.** It implements MCP 2026-07-28 (stateless, `server/discover`, multi round-trip requests, tasks) from day one.
-- **Tested end to end.** The example project runs through a test client over HTTP and stdio in CI on Linux and Windows, and a smoke test of every merged commit runs on Linux, Windows and macOS.
+- **Tested end to end.** The `examples/features` project runs through a test client over HTTP and stdio in CI on Linux and Windows, and a smoke test of every merged commit runs on Linux, Windows and macOS.
 
 It has its own runtime (`pkg/mcp`), so you can also skip the annotations and register tools in code. If you prefer to write every registration yourself, or need a revision older than 2026-07-28, another MCP library for Go is the better fit.
 
@@ -179,12 +184,12 @@ gomcp init ./hello --no-get                 # only write the files
 `build` compiles a single binary, `serve` builds and runs it as an HTTP server, `watch` rebuilds and restarts on every `.go` change and keeps the old server if a rebuild fails. `stdio` builds and runs it for a local client, see [Local or remote](#local-or-remote).
 
 ```sh
-gomcp build ./example ./bin/notes   # one binary, contains both transports
-gomcp serve ./example               # build + run over HTTP, Ctrl-C stops gracefully
-gomcp watch ./example               # rebuild on change (HTTP only)
-gomcp stdio ./example               # build + run over stdin and stdout
-gomcp call ./example                # list the tools
-gomcp call ./example add_note '{"text":"hi"}'   # call a tool, print the result
+gomcp build ./examples/features ./bin/notes   # one binary, contains both transports
+gomcp serve ./examples/features               # build + run over HTTP, Ctrl-C stops gracefully
+gomcp watch ./examples/features               # rebuild on change (HTTP only)
+gomcp stdio ./examples/features               # build + run over stdin and stdout
+gomcp call ./examples/features                # list the tools
+gomcp call ./examples/features add_note '{"text":"hi"}'   # call a tool, print the result
 gomcp version
 ```
 
@@ -202,7 +207,7 @@ flowchart LR
 `--tags/-t` forwards build tags. `serve`, `watch`, `stdio` and `call` also take `--dotenv/-e` (default `<module>/.env`; real environment wins). `serve` and `watch` take `--addr/-a` (sets `GOMCP_ADDR`, default `127.0.0.1:8080`, loopback only; set it to expose the server and configure `@MCP.Auth` first).
 
 ```sh
-gomcp serve ./example --addr 127.0.0.1:8765 --dotenv ./dev.env
+gomcp serve ./examples/features --addr 127.0.0.1:8765 --dotenv ./dev.env
 ```
 
 ## Transports

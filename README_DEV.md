@@ -5,18 +5,18 @@
 ```sh
 go vet ./...
 golangci-lint run --path-mode=abs      # config: .golangci.yml, CI uses the latest release
-go test -race ./...                    # includes e2e/, which builds and runs example/ (about a minute)
-(cd example && go vet ./...)           # example is its own module
+go test -race ./...                    # includes e2e/, which builds and runs examples/ (about a minute)
+for d in examples/*/; do (cd $d && go vet ./... && go test ./...); done   # every example is its own module
 ```
 
-`e2e/` talks to `example/` like an MCP client and fails when a feature of the example has no test. A new feature needs
+`e2e/` talks to `examples/features/` like an MCP client and fails when a feature of it has no test. A new feature needs
 an example and an e2e check.
 
 ## Test new feature
 
-Write a MCP with a new feature (or modify example). Then run the service.
+Write a MCP with a new feature (or modify examples/features). Then run the service.
 ```bash
-go run ./cmd/gomcp serve ./example --addr 127.0.0.1:8765
+go run ./cmd/gomcp serve ./examples/featuress/features --addr 127.0.0.1:8765
 ```
 
 Create a `mcp.json` to configure the MCP connector if not present. The example's OAuth verifier is a stub that accepts
@@ -44,15 +44,15 @@ Claude Code answers forms and URL pages itself in non-interactive runs, so use `
 
 `gomcp call` builds the project and lists its tools or calls one, no AI client needed:
 ```sh
-go run ./cmd/gomcp call ./example
-go run ./cmd/gomcp call ./example add_note '{"text":"hi"}'
+go run ./cmd/gomcp call ./examples/features
+go run ./cmd/gomcp call ./examples/features add_note '{"text":"hi"}'
 ```
 
 ## Test stdio
 
 Over stdio the client starts the server itself, so build once and point the client at the binary:
 ```sh
-go run ./cmd/gomcp build ./example ./bin/notes
+go run ./cmd/gomcp build ./examples/featuress/features ./bin/notes
 ```
 ```json
 {
