@@ -82,10 +82,10 @@ func TestVersion(t *testing.T) {
 
 func TestBuild(t *testing.T) {
 	f := &fakeActions{}
-	code, _, stderr := execute(t, f, "build", "./example", "./bin/notes")
+	code, _, stderr := execute(t, f, "build", "./examples/features", "./bin/notes")
 	require.Equal(t, 0, code, stderr)
 	assert.Equal(t, []string{"build"}, f.calls)
-	assert.Equal(t, "./example", f.build.dir)
+	assert.Equal(t, "./examples/features", f.build.dir)
 	assert.Equal(t, "./bin/notes", f.build.out)
 	assert.Empty(t, f.build.tags)
 }
@@ -93,7 +93,7 @@ func TestBuild(t *testing.T) {
 func TestBuildWithTags(t *testing.T) {
 	for _, flag := range []string{"--tags", "-t"} {
 		f := &fakeActions{}
-		code, _, stderr := execute(t, f, "build", "./example", "./out", flag, "integration")
+		code, _, stderr := execute(t, f, "build", "./examples/features", "./out", flag, "integration")
 		require.Equal(t, 0, code, stderr)
 		assert.Equal(t, "integration", f.build.tags, flag)
 	}
@@ -101,10 +101,10 @@ func TestBuildWithTags(t *testing.T) {
 
 func TestServe(t *testing.T) {
 	f := &fakeActions{}
-	code, _, stderr := execute(t, f, cmdServe, "./example")
+	code, _, stderr := execute(t, f, cmdServe, "./examples/features")
 	require.Equal(t, 0, code, stderr)
 	assert.Equal(t, []string{cmdServe}, f.calls)
-	assert.Equal(t, "./example", f.opts.Dir)
+	assert.Equal(t, "./examples/features", f.opts.Dir)
 	assert.Empty(t, f.opts.Tags)
 	assert.Empty(t, f.opts.DotEnv)
 	assert.Empty(t, f.opts.Addr)
@@ -112,11 +112,11 @@ func TestServe(t *testing.T) {
 
 func TestStdioCommand(t *testing.T) {
 	f := &fakeActions{}
-	code, _, stderr := execute(t, f, "stdio", "./example", "--tags", "dev", "--dotenv", "x.env")
+	code, _, stderr := execute(t, f, "stdio", "./examples/features", "--tags", "dev", "--dotenv", "x.env")
 	require.Equal(t, 0, code, stderr)
 	assert.Equal(t, []string{cmdServe}, f.calls, "stdio runs the server like serve does, over stdin and stdout")
 	assert.True(t, f.opts.Stdio)
-	assert.Equal(t, "./example", f.opts.Dir)
+	assert.Equal(t, "./examples/features", f.opts.Dir)
 	assert.Equal(t, "dev", f.opts.Tags)
 	assert.Equal(t, "x.env", f.opts.DotEnv)
 	assert.Empty(t, f.opts.Addr, "there is no listen address over stdio")
@@ -124,7 +124,7 @@ func TestStdioCommand(t *testing.T) {
 
 func TestStdioCommandHasNoAddressFlag(t *testing.T) {
 	f := &fakeActions{}
-	code, _, stderr := execute(t, f, "stdio", "./example", "--addr", ":1")
+	code, _, stderr := execute(t, f, "stdio", "./examples/features", "--addr", ":1")
 	if code == 0 { // the command line library may ignore unknown flags
 		assert.Empty(t, f.opts.Addr)
 	} else {
@@ -201,7 +201,7 @@ func TestCallFailureExitsWithOneAndMessageOnStderr(t *testing.T) {
 
 func TestServeIsNotStdio(t *testing.T) {
 	f := &fakeActions{}
-	code, _, stderr := execute(t, f, cmdServe, "./example")
+	code, _, stderr := execute(t, f, cmdServe, "./examples/features")
 	require.Equal(t, 0, code, stderr)
 	assert.False(t, f.opts.Stdio)
 }
@@ -210,7 +210,7 @@ func TestServeAndWatchFlags(t *testing.T) {
 	for _, command := range []string{cmdServe, "watch"} {
 		t.Run(command, func(t *testing.T) {
 			f := &fakeActions{}
-			code, _, stderr := execute(t, f, command, "./example", "-t", "dev", "-e", "local.env", "-a", ":9000")
+			code, _, stderr := execute(t, f, command, "./examples/features", "-t", "dev", "-e", "local.env", "-a", ":9000")
 			require.Equal(t, 0, code, stderr)
 			assert.Equal(t, []string{command}, f.calls)
 			assert.Equal(t, "dev", f.opts.Tags)
@@ -218,7 +218,7 @@ func TestServeAndWatchFlags(t *testing.T) {
 			assert.Equal(t, ":9000", f.opts.Addr)
 
 			f = &fakeActions{}
-			code, _, stderr = execute(t, f, command, "./example", "--tags", "dev", "--dotenv", "local.env", "--addr", ":9001")
+			code, _, stderr = execute(t, f, command, "./examples/features", "--tags", "dev", "--dotenv", "local.env", "--addr", ":9001")
 			require.Equal(t, 0, code, stderr)
 			assert.Equal(t, ":9001", f.opts.Addr)
 			assert.Equal(t, "local.env", f.opts.DotEnv)
@@ -229,7 +229,7 @@ func TestServeAndWatchFlags(t *testing.T) {
 func TestOutputStreamsAreForwarded(t *testing.T) {
 	f := &fakeActions{}
 	var stdout, stderr bytes.Buffer
-	code := run(t.Context(), []string{"gomcp", cmdServe, "./example"}, &stdout, &stderr, f.actions())
+	code := run(t.Context(), []string{"gomcp", cmdServe, "./examples/features"}, &stdout, &stderr, f.actions())
 	require.Equal(t, 0, code)
 	assert.Same(t, &stdout, f.opts.Stdout)
 	assert.Same(t, &stderr, f.opts.Stderr)
@@ -248,7 +248,7 @@ func TestUsageErrors(t *testing.T) {
 	cases := map[string][]string{
 		"unknown command":   {"deploy"},
 		"no command":        {},
-		"build needs paths": {"build", "./example"},
+		"build needs paths": {"build", "./examples/features"},
 		"serve needs path":  {cmdServe},
 	}
 	for name, args := range cases {

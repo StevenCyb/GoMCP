@@ -49,7 +49,7 @@ func parseErr(t *testing.T, files map[string]string) string {
 const header = "package api\n\nimport (\n\t\"context\"\n\t\"github.com/StevenCyb/GoMCP/pkg/mcp\"\n)\n\nvar _ context.Context\n\n"
 
 func TestParseExampleDirectory(t *testing.T) {
-	p, err := parser.Parse("../../example")
+	p, err := parser.Parse("../../examples/features")
 	require.NoError(t, err)
 
 	assert.Equal(t, "github.com/StevenCyb/example_mcp", p.Module.Path)

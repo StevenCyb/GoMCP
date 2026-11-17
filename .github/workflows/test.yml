@@ -23,9 +23,8 @@ jobs:
       # the runner tests build and run generated servers, so they need a few minutes
       - run: go test -race -timeout 5m ./...
 
-      # example is its own module; it must keep compiling against the runtime
-      - run: go vet ./...
-        working-directory: example
+      # every example is its own module; it must keep compiling against the runtime and pass its own tests
+      - run: for d in examples/*/; do (cd "$d" && go vet ./... && go test ./...) || exit 1; done
 
   # Windows is a release target. This job is informative and not a required check:
   # it shows early when a change breaks the build or the tests there.
