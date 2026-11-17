@@ -25,7 +25,7 @@ Older revisions are not supported.
 
 ## See It In 5 Seconds
 
-Write this in a Go module that requires GoMCP (`go get github.com/StevenCyb/GoMCP`):
+Fastest start: `gomcp init hello && cd hello && gomcp serve .` (see [Install](#install)). Or write this in a Go module that requires GoMCP (`go get github.com/StevenCyb/GoMCP`):
 
 ```go
 package api
@@ -62,7 +62,12 @@ Get:
 go install github.com/StevenCyb/GoMCP/cmd/gomcp@latest
 ```
 
-The binary is called `gomcp`.
+The binary is called `gomcp`. Then scaffold a first server in one step:
+
+```sh
+gomcp init hello && cd hello
+gomcp serve .
+```
 
 ## Contents
 
@@ -72,6 +77,7 @@ The binary is called `gomcp`.
   - [Annotation syntax](#annotation-syntax)
   - [How it runs](#how-it-runs)
 - [CLI](#cli)
+  - [init](#init)
   - [build, serve and watch](#build-serve-and-watch)
   - [Flags and environment](#flags-and-environment)
 - [Transports](#transports)
@@ -144,6 +150,16 @@ flowchart LR
 ```
 
 ## CLI
+
+### init
+
+`init <dir>` creates a new project: `go.mod`, an annotated `api.go` with one `hello` tool, `.gitignore` and a `README.md`. It then runs `go get` for this gomcp's version and `go mod tidy`. It refuses a directory that already has files. If `go get` fails (offline), the files stay and the error says what to run.
+
+```sh
+gomcp init ./hello                          # module example.com/hello
+gomcp init ./hello --module github.com/me/hello
+gomcp init ./hello --no-get                 # only write the files
+```
 
 ### build, serve and watch
 
