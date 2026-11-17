@@ -1,13 +1,30 @@
 #!/usr/bin/env bash
-# Smoke test of a published version: installs the tool, builds a fresh module that depends on the
-# published library (no replace directive) and talks to the generated server over HTTP and stdio.
+# Smoke test: installs the tool, builds a fresh module outside the repository that uses the library
+# and talks to the generated server over HTTP and stdio.
 #
-#   scripts/smoke.sh v0.1.0        # a release tag
+#   scripts/smoke.sh v0.1.0        # a release tag, fetched like a user would
 #   GOPRIVATE=github.com/StevenCyb/GoMCP scripts/smoke.sh <commit sha>   # a pushed commit, as CI does after a merge
+#   scripts/smoke.sh --local .     # a checkout: no network for the repository itself, for branches
 set -euo pipefail
 
-VERSION="${1:?usage: smoke.sh <tag or commit sha>}"
 MODULE=github.com/StevenCyb/GoMCP
+if [ "${1:-}" = "--local" ]; then
+  REPO="$(cd "${2:?usage: smoke.sh --local <repository path>}" && pwd)"
+  command -v cygpath >/dev/null 2>&1 && REPO="$(cygpath -m "$REPO")" # Go on Windows needs C:/... paths
+  VERSION=local
+else
+  VERSION="${1:?usage: smoke.sh <tag or commit sha> | --local <repository path>}"
+fi
+
+# retry <command...>: the Go module cache sometimes fails on a just pushed commit (shallow file has changed)
+retry() {
+  for attempt in 1 2 3; do
+    "$@" && return 0
+    echo "retry $attempt: $*" >&2
+    sleep $((attempt * 3))
+  done
+  "$@"
+}
 WORK="$(mktemp -d)"
 PORT="${PORT:-18765}"
 cleanup() {
@@ -19,7 +36,11 @@ cleanup() {
 trap cleanup EXIT
 
 echo "== install gomcp $VERSION"
-GOBIN="$WORK/bin" go install "$MODULE/cmd/gomcp@$VERSION"
+if [ "$VERSION" = local ]; then
+  (cd "$REPO" && GOBIN="$WORK/bin" go install ./cmd/gomcp)
+else
+  retry env GOBIN="$WORK/bin" go install "$MODULE/cmd/gomcp@$VERSION"
+fi
 echo "version: $("$WORK/bin/gomcp" version)"
 
 echo "== fresh module"
@@ -38,7 +59,12 @@ type HelloIn struct {
 // @MCP.Tool("hello", description="Greets someone")
 func Hello(ctx mcp.Context, in HelloIn) (string, error) { return "Hello " + in.Name, nil }
 GO
-go get "$MODULE@$VERSION"
+if [ "$VERSION" = local ]; then
+  go mod edit -require "$MODULE@v0.0.0" -replace "$MODULE=$REPO"
+  retry go mod tidy # fetches the dependencies of the library
+else
+  retry go get "$MODULE@$VERSION"
+fi
 
 echo "== serve"
 GOMCP_ADDR="127.0.0.1:$PORT" "$WORK/bin/gomcp" serve . >"$WORK/serve.log" 2>&1 &

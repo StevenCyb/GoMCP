@@ -85,4 +85,9 @@ jobs:
       # only needed while the repository is private, harmless afterwards
       - run: git config --global url."https://x-access-token:${{ github.token }}@github.com/".insteadOf "https://github.com/"
 
-      - run: scripts/smoke.sh "$GITHUB_SHA"
+      # main and manual runs test what a user gets from the pushed commit. A feature branch is tested from the
+      # checkout: its commit may be gone (branch deleted by a quick merge) before this job gets to fetch it.
+      - if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+        run: scripts/smoke.sh "$GITHUB_SHA"
+      - if: github.ref != 'refs/heads/main' && github.event_name != 'workflow_dispatch'
+        run: scripts/smoke.sh --local "$GITHUB_WORKSPACE"
