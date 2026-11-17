@@ -1,4 +1,4 @@
-// Stdio test: build and run example/ over stdin and stdout, like a client that starts the server itself.
+// Stdio test: build and run examples/features/ over stdin and stdout, like a client that starts the server itself.
 package e2e_test
 
 import (
@@ -25,6 +25,12 @@ type stdioClient struct {
 
 func startStdioExample(t *testing.T) *stdioClient {
 	t.Helper()
+	return startStdio(t, "../examples/features")
+}
+
+// startStdio builds and runs the server in dir over pipes.
+func startStdio(t *testing.T, dir string) *stdioClient {
+	t.Helper()
 	if testing.Short() {
 		t.Skip("builds and runs the example")
 	}
@@ -34,7 +40,7 @@ func startStdioExample(t *testing.T) *stdioClient {
 
 	done := make(chan error, 1)
 	go func() {
-		done <- runner.Serve(t.Context(), runner.Options{Dir: "../example", Stdio: true, Stdin: inR, Stdout: outW, Stderr: io.Discard})
+		done <- runner.Serve(t.Context(), runner.Options{Dir: dir, Stdio: true, Stdin: inR, Stdout: outW, Stderr: io.Discard})
 		_ = outW.Close()
 	}()
 	go func() {
