@@ -10,6 +10,7 @@ import (
 
 	"github.com/StevenCyb/GoCLI/pkg/cli"
 	"github.com/StevenCyb/GoMCP/internal/runner"
+	"github.com/StevenCyb/GoMCP/internal/scaffold"
 )
 
 // linkVersion is overridden at release build time via -ldflags "-X main.linkVersion=...".
@@ -46,9 +47,12 @@ const banner = `   ____       __  __  ____ ____
 const (
 	argProject = "project_path"
 	argOutput  = "output_path"
+	argDir     = "dir"
 	optTags    = "tags"
 	optDotEnv  = "dotenv"
 	optAddr    = "addr"
+	optModule  = "module"
+	optNoGet   = "no-get"
 )
 
 // actions are the operations the commands run; tests replace them.
@@ -56,10 +60,11 @@ type actions struct {
 	build func(ctx context.Context, dir, out, tags string) error
 	serve func(ctx context.Context, o runner.Options) error
 	watch func(ctx context.Context, o runner.Options) error
+	init  func(ctx context.Context, o scaffold.Options) error
 }
 
 func realActions() actions {
-	return actions{build: runner.Build, serve: runner.Serve, watch: runner.Watch}
+	return actions{build: runner.Build, serve: runner.Serve, watch: runner.Watch, init: scaffold.Init}
 }
 
 // run executes the command line and returns the exit code.
@@ -151,6 +156,26 @@ func newApp(ctx context.Context, stdout, stderr io.Writer, a actions) *cli.CLI {
 					cli.Description("Path to a .env file for the server process (default: <project_path>/.env).")),
 				cli.Option(optAddr, cli.Short('a'), cli.Default(""), cli.Description("Listen address of the server (default 127.0.0.1:8080).")),
 				cli.Handler(func(c *cli.Context) error { return a.watch(ctx, options(c)) }),
+			),
+		),
+		cli.Command(
+			"init",
+			cli.Description("Creates a new GoMCP project with one example tool."),
+			cli.Argument(
+				argDir,
+				cli.Description("Directory to create; it must not contain files."),
+				cli.Option(optModule, cli.Short('m'), cli.Default(""), cli.Description("Go module path (default example.com/<directory name>).")),
+				cli.Option(optNoGet, cli.Default("false"), cli.Description("Only write the files, skip go get and go mod tidy.")),
+				cli.Handler(func(c *cli.Context) error {
+					return a.init(ctx, scaffold.Options{
+						Dir:     *c.GetArgument(argDir),
+						Module:  *c.GetOption(optModule),
+						Version: version,
+						NoGet:   *c.GetOption(optNoGet) != "false", // a bare flag has an empty value
+						Stdout:  stdout,
+						Stderr:  stderr,
+					})
+				}),
 			),
 		),
 		cli.Command(

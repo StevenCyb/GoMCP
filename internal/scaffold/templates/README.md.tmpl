@@ -1,0 +1,17 @@
+# {{.Name}}
+
+A GoMCP server. The tools live in `api.go`.
+
+```sh
+gomcp serve .                  # MCP endpoint on http://127.0.0.1:8080/mcp
+gomcp stdio .                  # the same server over stdin and stdout
+gomcp build . ./bin/{{.Name}}  # one binary for a client that starts it
+```
+
+Client config for the built binary (stdio):
+
+```json
+{ "mcpServers": { "{{.Name}}": { "command": "/absolute/path/to/bin/{{.Name}}", "args": ["--stdio"] } } }
+```
+
+Or with Claude Code: `claude mcp add {{.Name}} -- /absolute/path/to/bin/{{.Name}} --stdio`
