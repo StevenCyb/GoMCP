@@ -4,11 +4,13 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"regexp"
 	"runtime/debug"
 	"strings"
 
 	"github.com/StevenCyb/GoCLI/pkg/cli"
+	"github.com/StevenCyb/GoMCP/internal/caller"
 	"github.com/StevenCyb/GoMCP/internal/runner"
 	"github.com/StevenCyb/GoMCP/internal/scaffold"
 )
@@ -61,15 +63,23 @@ type actions struct {
 	serve func(ctx context.Context, o runner.Options) error
 	watch func(ctx context.Context, o runner.Options) error
 	init  func(ctx context.Context, o scaffold.Options) error
+	call  func(ctx context.Context, o runner.Options, req caller.Request, stdout io.Writer) error
+	stdin io.Reader // arguments of call given as "-"
 }
 
 func realActions() actions {
-	return actions{build: runner.Build, serve: runner.Serve, watch: runner.Watch, init: scaffold.Init}
+	return actions{build: runner.Build, serve: runner.Serve, watch: runner.Watch, init: scaffold.Init, call: caller.Run, stdin: os.Stdin}
 }
 
 // run executes the command line and returns the exit code.
 func run(ctx context.Context, args []string, stdout, stderr io.Writer, a actions) int {
-	app := newApp(ctx, stdout, stderr, a)
+	var call callInput
+	args, err := parseCall(args, &call)
+	if err != nil {
+		_, _ = fmt.Fprintln(stderr, err)
+		return 1
+	}
+	app := newApp(ctx, stdout, stderr, a, &call)
 	if _, err := app.RunWith(args); err != nil {
 		_, _ = fmt.Fprintln(stderr, err)
 		return 1
@@ -77,7 +87,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, a actions
 	return 0
 }
 
-func newApp(ctx context.Context, stdout, stderr io.Writer, a actions) *cli.CLI {
+func newApp(ctx context.Context, stdout, stderr io.Writer, a actions, call *callInput) *cli.CLI {
 	options := func(c *cli.Context) runner.Options {
 		return runner.Options{
 			Dir:    *c.GetArgument(argProject),
@@ -142,6 +152,27 @@ func newApp(ctx context.Context, stdout, stderr io.Writer, a actions) *cli.CLI {
 						Stdout: stdout,
 						Stderr: stderr,
 					})
+				}),
+			),
+		),
+		cli.Command(
+			"call",
+			cli.Description("Builds the project, lists its tools or calls one and prints the result, to try a tool without an AI client."),
+			cli.Argument(
+				argProject,
+				cli.Description("Path to the root of the Go project, then the tool name and its arguments as a JSON object (- reads stdin)."),
+				// parseCall reads the flags, they are declared for the help text
+				cli.Option(optJSON, cli.Description("Print the raw result as indented JSON.")),
+				cli.Option(optRoot, cli.Short('r'), cli.Description("Directory answered to roots/list, may be repeated.")),
+				cli.Option(optTags, cli.Short('t'), cli.Default(""), cli.Description("Build tags for go build.")),
+				cli.Option(optDotEnv, cli.Short('e'), cli.Default(""),
+					cli.Description("Path to a .env file for the server process (default: <project_path>/.env).")),
+				cli.Handler(func(*cli.Context) error {
+					req, err := call.resolve(a.stdin)
+					if err != nil {
+						return err
+					}
+					return a.call(ctx, runner.Options{Dir: call.project, Tags: call.tags, DotEnv: call.dotenv, Stderr: stderr}, req, stdout)
 				}),
 			),
 		),
