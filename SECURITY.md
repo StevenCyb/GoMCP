@@ -16,6 +16,6 @@ Please do not open a public issue. Use GitHub's private vulnerability reporting
   per-user URIs and authorize them in the resource handler via `ctx.Principal()`.
 - Over stdio (`gomcp stdio`, `--stdio`, `GOMCP_TRANSPORT=stdio`) there is no authentication and scopes are not checked: the
   caller is the process that started the server. Only start it for clients you trust, and do not wire it to a network socket.
-- `example/` uses a stub token verifier that accepts every non-empty token. Never copy it into production.
+- `examples/features/` uses a stub token verifier that accepts every non-empty token. Never copy it into production.
 - Features of the example that check scopes (`@MCP.AuthScopes`) apply to tools, prompts, resources, completion and
   resource subscriptions.
