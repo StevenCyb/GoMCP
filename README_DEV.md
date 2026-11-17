@@ -40,6 +40,14 @@ claude --mcp-config mcp.json
 
 Claude Code answers forms and URL pages itself in non-interactive runs, so use `e2e/` for exact checks of those paths.
 
+## Quick manual test
+
+`gomcp call` builds the project and lists its tools or calls one, no AI client needed:
+```sh
+go run ./cmd/gomcp call ./example
+go run ./cmd/gomcp call ./example add_note '{"text":"hi"}'
+```
+
 ## Test stdio
 
 Over stdio the client starts the server itself, so build once and point the client at the binary:

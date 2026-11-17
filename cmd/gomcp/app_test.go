@@ -4,16 +4,23 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"runtime/debug"
+	"strings"
 	"testing"
 
+	"github.com/StevenCyb/GoMCP/internal/caller"
 	"github.com/StevenCyb/GoMCP/internal/runner"
 	"github.com/StevenCyb/GoMCP/internal/scaffold"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-const cmdServe = "serve"
+const (
+	cmdServe   = "serve"
+	cmdCall    = "call"
+	exampleDir = "./example"
+)
 
 // fakeActions records the calls the CLI makes.
 type fakeActions struct {
@@ -21,6 +28,8 @@ type fakeActions struct {
 	build struct{ dir, out, tags string }
 	opts  runner.Options
 	scaf  scaffold.Options
+	req   caller.Request
+	stdin string
 	err   error
 }
 
@@ -46,6 +55,13 @@ func (f *fakeActions) actions() actions {
 			f.opts = o
 			return f.err
 		},
+		call: func(_ context.Context, o runner.Options, req caller.Request, stdout io.Writer) error {
+			f.calls = append(f.calls, "call")
+			f.opts, f.req = o, req
+			_, _ = io.WriteString(stdout, "result\n")
+			return f.err
+		},
+		stdin: strings.NewReader(f.stdin),
 	}
 }
 
@@ -114,6 +130,73 @@ func TestStdioCommandHasNoAddressFlag(t *testing.T) {
 	} else {
 		assert.NotEmpty(t, stderr)
 	}
+}
+
+func TestCallListsTools(t *testing.T) {
+	f := &fakeActions{}
+	code, stdout, stderr := execute(t, f, cmdCall, exampleDir)
+	require.Equal(t, 0, code, stderr)
+	assert.Equal(t, []string{cmdCall}, f.calls)
+	assert.Equal(t, "result\n", stdout, "the result is on stdout")
+	assert.Equal(t, exampleDir, f.opts.Dir)
+	assert.Empty(t, f.req.Tool, "no tool means listing")
+}
+
+func TestCallATool(t *testing.T) {
+	f := &fakeActions{}
+	code, _, stderr := execute(t, f, cmdCall, exampleDir, "add_note", `{"text":"hi"}`)
+	require.Equal(t, 0, code, stderr)
+	assert.Equal(t, "add_note", f.req.Tool)
+	assert.JSONEq(t, `{"text":"hi"}`, string(f.req.Args))
+	assert.False(t, f.req.JSON)
+}
+
+func TestCallFlagsInAnyPosition(t *testing.T) {
+	f := &fakeActions{}
+	code, _, stderr := execute(t, f, cmdCall, "--json", "-t", "dev", exampleDir, "-e", "x.env", "get_note", "--root", "a", "-r", "b", `{"id":"1"}`)
+	require.Equal(t, 0, code, stderr)
+	assert.Equal(t, exampleDir, f.opts.Dir)
+	assert.Equal(t, "dev", f.opts.Tags)
+	assert.Equal(t, "x.env", f.opts.DotEnv)
+	assert.Equal(t, "get_note", f.req.Tool)
+	assert.True(t, f.req.JSON)
+	assert.Equal(t, []string{"a", "b"}, f.req.Roots)
+}
+
+func TestCallArgumentsFromStdin(t *testing.T) {
+	f := &fakeActions{stdin: ` {"text":"from stdin"}` + "\n"}
+	code, _, stderr := execute(t, f, cmdCall, exampleDir, "add_note", "-")
+	require.Equal(t, 0, code, stderr)
+	assert.JSONEq(t, `{"text":"from stdin"}`, string(f.req.Args))
+}
+
+func TestCallRejectsBadInputBeforeBuilding(t *testing.T) {
+	cases := map[string][]string{
+		"not json":      {cmdCall, exampleDir, "add_note", "{text"},
+		"not an object": {cmdCall, exampleDir, "add_note", "[1]"},
+		"bad stdin":     {cmdCall, exampleDir, "add_note", "-"},
+		"unknown flag":  {cmdCall, exampleDir, "--nope"},
+		"missing value": {cmdCall, exampleDir, "--root"},
+		"too many":      {cmdCall, exampleDir, "add_note", "{}", "extra"},
+		"no project":    {cmdCall},
+	}
+	for name, args := range cases {
+		t.Run(name, func(t *testing.T) {
+			f := &fakeActions{stdin: "nope"}
+			code, stdout, stderr := execute(t, f, args...)
+			assert.Equal(t, 1, code)
+			assert.NotEmpty(t, stderr)
+			assert.Empty(t, stdout)
+			assert.Empty(t, f.calls, "nothing is built")
+		})
+	}
+}
+
+func TestCallFailureExitsWithOneAndMessageOnStderr(t *testing.T) {
+	f := &fakeActions{err: &caller.ToolError{Message: "it broke"}}
+	code, _, stderr := execute(t, f, cmdCall, exampleDir, "fail")
+	assert.Equal(t, 1, code)
+	assert.Contains(t, stderr, "it broke")
 }
 
 func TestServeIsNotStdio(t *testing.T) {

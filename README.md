@@ -183,8 +183,12 @@ gomcp build ./example ./bin/notes   # one binary, contains both transports
 gomcp serve ./example               # build + run over HTTP, Ctrl-C stops gracefully
 gomcp watch ./example               # rebuild on change (HTTP only)
 gomcp stdio ./example               # build + run over stdin and stdout
+gomcp call ./example                # list the tools
+gomcp call ./example add_note '{"text":"hi"}'   # call a tool, print the result
 gomcp version
 ```
+
+`call` tries a project without an AI client: it builds the project, starts it over stdio, lists the tools or calls one and stops the server. Text results go to stdout, build logs and errors to stderr. Arguments are a JSON object (`-` reads it from stdin), `--json` prints the raw result, and the exit code is 1 when the tool returns an error or the server a protocol error. Tools that ask the client for input (forms, sampling) are reported, not answered; `--root <dir>` answers `roots/list`.
 
 ```mermaid
 flowchart LR
@@ -195,7 +199,7 @@ flowchart LR
 
 ### Flags and environment
 
-`--tags/-t` forwards build tags. `serve`, `watch` and `stdio` also take `--dotenv/-e` (default `<module>/.env`; real environment wins). `serve` and `watch` take `--addr/-a` (sets `GOMCP_ADDR`, default `127.0.0.1:8080`, loopback only; set it to expose the server and configure `@MCP.Auth` first).
+`--tags/-t` forwards build tags. `serve`, `watch`, `stdio` and `call` also take `--dotenv/-e` (default `<module>/.env`; real environment wins). `serve` and `watch` take `--addr/-a` (sets `GOMCP_ADDR`, default `127.0.0.1:8080`, loopback only; set it to expose the server and configure `@MCP.Auth` first).
 
 ```sh
 gomcp serve ./example --addr 127.0.0.1:8765 --dotenv ./dev.env
