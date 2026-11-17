@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/StevenCyb/GoMCP/internal/runner"
+	"github.com/StevenCyb/GoMCP/internal/scaffold"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -19,6 +20,7 @@ type fakeActions struct {
 	calls []string
 	build struct{ dir, out, tags string }
 	opts  runner.Options
+	scaf  scaffold.Options
 	err   error
 }
 
@@ -32,6 +34,11 @@ func (f *fakeActions) actions() actions {
 		serve: func(_ context.Context, o runner.Options) error {
 			f.calls = append(f.calls, "serve")
 			f.opts = o
+			return f.err
+		},
+		init: func(_ context.Context, o scaffold.Options) error {
+			f.calls = append(f.calls, "init")
+			f.scaf = o
 			return f.err
 		},
 		watch: func(_ context.Context, o runner.Options) error {
@@ -170,6 +177,32 @@ func TestUsageErrors(t *testing.T) {
 			assert.Empty(t, f.calls, "nothing runs on a usage error")
 		})
 	}
+}
+
+func TestInit(t *testing.T) {
+	f := &fakeActions{}
+	code, _, stderr := execute(t, f, "init", "./notes")
+	require.Equal(t, 0, code, stderr)
+	assert.Equal(t, []string{"init"}, f.calls)
+	assert.Equal(t, "./notes", f.scaf.Dir)
+	assert.Empty(t, f.scaf.Module)
+	assert.False(t, f.scaf.NoGet)
+	assert.Equal(t, version, f.scaf.Version)
+}
+
+func TestInitFlags(t *testing.T) {
+	f := &fakeActions{}
+	code, _, stderr := execute(t, f, "init", "./notes", "--module", "example.org/notes", "--no-get")
+	require.Equal(t, 0, code, stderr)
+	assert.Equal(t, "example.org/notes", f.scaf.Module)
+	assert.True(t, f.scaf.NoGet)
+}
+
+func TestInitErrorFailsTheCommand(t *testing.T) {
+	f := &fakeActions{err: errors.New("not empty")}
+	code, _, stderr := execute(t, f, "init", "./notes")
+	assert.Equal(t, 1, code)
+	assert.Contains(t, stderr, "not empty")
 }
 
 func TestResolveVersion(t *testing.T) {

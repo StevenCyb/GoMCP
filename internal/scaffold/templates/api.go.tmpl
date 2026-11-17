@@ -1,0 +1,20 @@
+// Package api is the {{.Name}} MCP server, a minimal GoMCP project. Run it with `gomcp serve .`.
+// The @MCP.* comments are the whole configuration.
+//
+// @MCP.Server("{{.Name}}", version="0.1.0")
+// @MCP.Instructions("Call hello to greet someone.")
+package api
+
+import "github.com/StevenCyb/GoMCP/pkg/mcp"
+
+// HelloIn is the tool input. The json tag names the argument, desc is shown to the model.
+type HelloIn struct {
+	Name string `json:"name" desc:"Who to greet"`
+}
+
+// Hello is a tool the model can call: func(ctx, input) (output, error).
+//
+// @MCP.Tool("hello", description="Greets someone")
+func Hello(ctx mcp.Context, in HelloIn) (string, error) {
+	return "Hello " + in.Name, nil
+}
