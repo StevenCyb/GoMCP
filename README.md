@@ -31,7 +31,7 @@ You write the handler, GoMCP writes everything around it.
 - **Nothing lands in your module.** The generated code is built with Go's overlay mechanism: no generated files to commit or review, and no `go:generate` step.
 - **Remote or local from one codebase.** The same code runs as an HTTP server for many clients (`gomcp serve`) or as a local process that one client starts (`gomcp stdio`).
 - **The newest spec.** It implements MCP 2026-07-28 (stateless, `server/discover`, multi round-trip requests, tasks) from day one.
-- **Tested end to end.** The example project runs through a real client in CI on Linux, Windows and macOS, over HTTP and stdio.
+- **Tested end to end.** The example project runs through a test client over HTTP and stdio in CI on Linux and Windows, and a smoke test of every merged commit runs on Linux, Windows and macOS.
 
 It has its own runtime (`pkg/mcp`), so you can also skip the annotations and register tools in code. If you prefer to write every registration yourself, or need a revision older than 2026-07-28, another MCP library for Go is the better fit.
 
