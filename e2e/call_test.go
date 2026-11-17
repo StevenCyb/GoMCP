@@ -1,6 +1,6 @@
 package e2e_test
 
-// TestCall runs gomcp call against example/: it builds it and talks over the stdio pipes like the command does.
+// TestCall runs gomcp call against examples/features/: it builds it and talks over the stdio pipes like the command does.
 
 import (
 	"bytes"
@@ -22,7 +22,7 @@ func TestCall(t *testing.T) {
 	}
 	run := func(req caller.Request) (string, error) {
 		var out bytes.Buffer
-		err := caller.Run(t.Context(), runner.Options{Dir: "../example", Stderr: io.Discard}, req, &out)
+		err := caller.Run(t.Context(), runner.Options{Dir: "../examples/features", Stderr: io.Discard}, req, &out)
 		return out.String(), err
 	}
 
