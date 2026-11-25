@@ -101,6 +101,7 @@ func (c *collector) finish() {
 		dup("prompt", pr.Name, pr.Func.Pos)
 		prompts[pr.Name] = true
 	}
+	c.checkRoutes()
 	for _, l := range c.p.Lists {
 		if !templates[l.Template] {
 			c.errorf(l.Func.Pos, "ResourceList: no resource template %q", l.Template)

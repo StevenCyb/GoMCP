@@ -107,6 +107,7 @@ gomcp serve .
   - [Middleware](#middleware)
   - [Setup and teardown](#setup-and-teardown)
   - [Static assets and icons](#static-assets-and-icons)
+  - [Custom HTTP handlers](#custom-http-handlers)
 - [Authentication](#authentication)
   - [Bearer and API keys](#bearer-and-api-keys)
   - [OAuth resource server](#oauth-resource-server)
@@ -364,6 +365,29 @@ func Add(ctx mcp.Context, in AddIn) (Note, error) {
 }
 ```
 
+### Custom HTTP handlers
+
+Serve a plain HTTP handler next to the MCP endpoint, for example the sign-in page or the callback of a [URL elicitation](#url-elicitation). `@MCP.HTTPHandler` takes a [`http.ServeMux` pattern](https://pkg.go.dev/net/http#ServeMux) and goes on a `func(http.ResponseWriter, *http.Request)`.
+
+```go
+// @MCP.HTTPHandler("GET /health")
+func Health(w http.ResponseWriter, r *http.Request) {
+	_, _ = fmt.Fprintln(w, "ok")
+}
+
+// @MCP.HTTPHandler("POST /sign-in/{id}")
+func SignIn(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id") // the {id} of the pattern
+	_, _ = fmt.Fprintln(w, "sign-in", id)
+}
+```
+
+Wildcards such as `{id}` work as in `http.ServeMux`; read them with `r.PathValue`.
+
+- **HTTP only:** over stdio there is no listener, so the handler is never served.
+- **No protection from gomcp:** the origin check and `@MCP.Auth` apply to the MCP endpoint only. The handler must authenticate its callers itself.
+- **No clashes:** a pattern that is invalid or clashes with the MCP endpoint, an assets route or another handler is an error when gomcp builds the project.
+
 ## Authentication
 
 ### Bearer and API keys
@@ -557,9 +581,9 @@ Full version: [examples/features/elicitation.go](examples/features/elicitation.g
 
 Send the user to your own web page (sign-in, payment) and wait until it reports back. Needs `@MCP.Requires(elicitation="url")`. A decline or cancel makes `ElicitURL` return an error wrapping `mcp.ErrDeclined`.
 
-The page cannot call gomcp. Your web backend tells an endpoint in the MCP server's process, and that endpoint calls `mcp.CompleteElicitation(id)`. That endpoint needs a server built by hand ([Using pkg/mcp by hand](#using-pkgmcp-by-hand)).
+The page cannot call gomcp. Your web backend tells an endpoint in the MCP server's process, and that endpoint calls `mcp.CompleteElicitation(id)`. You add that endpoint with [`@MCP.HTTPHandler`](#custom-http-handlers). The sign-in page itself may be served by the same server or by any other service.
 
-> gomcp does not check who completes: the client knows the `id` too (it is in the URL). Accept calls only from your own backend, and only after the user signed in on your page.
+> gomcp does not check who completes: the client knows the `id` too (it is in the URL), and an `@MCP.HTTPHandler` is not behind the authentication of the MCP endpoint. Accept calls only from your own backend, and only after the user signed in on your page.
 
 ```go
 // @MCP.Tool("connect_account", description="Links an account via a sign-in page")
@@ -613,20 +637,21 @@ http.HandleFunc("GET /connect", func(w http.ResponseWriter, r *http.Request) {
 })
 ```
 
-Step 5 arrives at `mcp.example.local`, in the MCP server's process (on the same `mux` as `srv.Mount`, see [Using pkg/mcp by hand](#using-pkgmcp-by-hand)). This is the only place that calls gomcp:
+Step 5 arrives at `mcp.example.local`, in the MCP server's process. This handler is the only place that calls gomcp:
 
 ```go
-mux.HandleFunc("POST /elicitation/complete", func(w http.ResponseWriter, r *http.Request) {
+// @MCP.HTTPHandler("POST /elicitation/complete")
+func CompleteSignIn(w http.ResponseWriter, r *http.Request) {
 	var in struct{ ID string `json:"id"` }
 	if json.NewDecoder(r.Body).Decode(&in) != nil || !mcp.CompleteElicitation(in.ID) {
 		http.Error(w, "unknown id", http.StatusNotFound) // unknown or expired
 		return
 	}
 	w.WriteHeader(http.StatusNoContent) // the waiting handler continues now
-})
+}
 ```
 
-Protect `POST /elicitation/complete` with your own authentication (see the warning above).
+Protect `POST /elicitation/complete` with your own authentication (see the warning above). If the sign-in page is served by the same server, its handler can call `mcp.CompleteElicitation(id)` directly: see `SignInPage` and `CompleteSignIn` in [examples/features/elicitation.go](examples/features/elicitation.go).
 
 ### Sampling
 

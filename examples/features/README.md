@@ -22,7 +22,7 @@ every feature through a test client, so it stays working.
 | `static_assets.go` | embedded assets, icons by relative path | Static assets and icons |
 | `auth.go` | OAuth resource server, API key, scopes | Authentication |
 | `tools.go` | typed input/output, schema tags, hints, results, errors, `_meta` | Tools |
-| `elicitation.go` | form and URL elicitation, confirmation | Asking the user (forms) |
+| `elicitation.go` | form and URL elicitation, confirmation, the sign-in page and its completion as `@MCP.HTTPHandler` | Asking the user (forms), URL elicitation, Custom HTTP handlers |
 | `sampling.go` | sampling: the client's model picks a tag, answer checked, `Requires` | Sampling |
 | `progress.go` | progress and log notifications while a tool runs | Progress and logs |
 | `roots.go` | roots: the folders the client works in, `Requires` | Roots |

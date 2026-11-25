@@ -218,6 +218,20 @@ func TestLifecycleAndAssets(t *testing.T) {
 	assert.Less(t, indexOf(src, "serveHTTP(ctx, srv, mux)"), indexOf(src, "api.Teardown()"))
 }
 
+func TestHTTPHandlers(t *testing.T) {
+	p := base()
+	p.Handlers = []project.HTTPHandler{
+		{FuncRef: fn("Complete"), Pattern: "POST /elicitation/complete"},
+		{FuncRef: fn("Page"), Pattern: "GET /connect"},
+	}
+	src := gen(t, p)
+
+	assert.Contains(t, src, `mux.HandleFunc("POST /elicitation/complete", api.Complete)`)
+	assert.Contains(t, src, `mux.HandleFunc("GET /connect", api.Page)`)
+	assert.Less(t, indexOf(src, "srv.Mount(mux"), indexOf(src, `mux.HandleFunc("POST /elicitation/complete"`))
+	assert.Less(t, indexOf(src, `mux.HandleFunc("GET /connect"`), indexOf(src, "serveHTTP(ctx, srv, mux)"))
+}
+
 func TestImportAliases(t *testing.T) {
 	p := base()
 	paths := map[string]string{"A": "example.com/app/tools", "B": "example.com/app/other/tools", "C": "example.com/app/mcp", "D": "example.com/app/http"}

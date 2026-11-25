@@ -30,12 +30,21 @@ type Project struct {
 	Setup      []Setup
 	Teardown   []FuncRef
 	Assets     []Assets
+	// Handlers are plain HTTP handlers served next to the MCP endpoint (HTTP only).
+	Handlers []HTTPHandler
 
 	Tools       []Tool
 	Resources   []Resource
 	Lists       []ResourceList
 	Prompts     []Prompt
 	Completions []Completion
+}
+
+// HTTPHandler is a plain HTTP handler registered on the mux of the server.
+type HTTPHandler struct {
+	FuncRef
+
+	Pattern string // http.ServeMux pattern, for example "POST /hook"
 }
 
 // Setup is a startup hook.

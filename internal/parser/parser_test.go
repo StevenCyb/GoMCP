@@ -86,6 +86,10 @@ func TestParseExampleDirectory(t *testing.T) {
 	assert.Equal(t, "bearer", p.Auth[1].Type)
 	assert.Equal(t, "VerifyAPIKey", p.Auth[1].Verify.Name)
 
+	require.Len(t, p.Handlers, 2)
+	assert.Equal(t, "GET /connect", p.Handlers[0].Pattern)
+	assert.Equal(t, "POST /connect", p.Handlers[1].Pattern)
+
 	require.Len(t, p.Assets, 1)
 	assert.Equal(t, "/assets", p.Assets[0].Prefix)
 	assert.Equal(t, "Assets", p.Assets[0].Var.Name)

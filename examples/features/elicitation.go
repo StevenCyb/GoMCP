@@ -5,6 +5,9 @@
 package api
 
 import (
+	"fmt"
+	"html"
+	"net/http"
 	"time"
 
 	"github.com/StevenCyb/GoMCP/pkg/mcp"
@@ -66,15 +69,19 @@ func Detail(ctx mcp.Context, in IDIn) (Note, error) {
 	return note, nil
 }
 
+// signInURL is the sign-in page of connect_account. Here it is served by this
+// server (SignInPage below, default address of gomcp serve); a real page often
+// lives in another service.
+const signInURL = "http://127.0.0.1:8080/connect?e={id}"
+
 // Example: sensitive flow handled outside the client (URL elicitation).
 //
 // @MCP.Tool("connect_account", description="Links an external account via browser")
 // @MCP.Requires(elicitation="url")
 func Connect(ctx mcp.Context, _ mcp.Empty) (mcp.Empty, error) {
-	// {id} is replaced by the elicitation id. When the user is done, the backend
-	// of the sign-in page tells an endpoint in this process (your own code, not
-	// provided by gomcp), which calls mcp.CompleteElicitation(id).
-	id, err := ctx.ElicitURL("Sign in to continue", "https://login.example.local/connect?e={id}")
+	// {id} is replaced by the elicitation id. When the user is done, a handler
+	// of this process calls mcp.CompleteElicitation(id), see CompleteSignIn.
+	id, err := ctx.ElicitURL("Sign in to continue", signInURL)
 	if err != nil {
 		return mcp.Empty{}, err
 	}
@@ -87,4 +94,28 @@ func Connect(ctx mcp.Context, _ mcp.Empty) (mcp.Empty, error) {
 	case <-time.After(10 * time.Minute):
 		return mcp.Empty{}, mcp.ToolError("sign-in timed out")
 	}
+}
+
+// Example: the sign-in page the user is sent to (@MCP.HTTPHandler serves a plain
+// HTTP handler next to the MCP endpoint, over HTTP only). A real page signs the
+// user in first. These handlers are not behind the authentication of the MCP
+// endpoint: they must protect themselves.
+//
+// @MCP.HTTPHandler("GET /connect")
+func SignInPage(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = fmt.Fprintf(w, `<form method="post" action="/connect"><input type="hidden" name="e" value="%s"><button>Sign in</button></form>`,
+		html.EscapeString(r.URL.Query().Get("e")))
+}
+
+// Example: the user pressed the button. CompleteElicitation ends the wait of
+// connect_account; it returns false for an unknown or expired id.
+//
+// @MCP.HTTPHandler("POST /connect")
+func CompleteSignIn(w http.ResponseWriter, r *http.Request) {
+	if !mcp.CompleteElicitation(r.FormValue("e")) {
+		http.Error(w, "unknown or expired sign-in", http.StatusNotFound)
+		return
+	}
+	_, _ = fmt.Fprintln(w, "Signed in, you can close this page.")
 }
