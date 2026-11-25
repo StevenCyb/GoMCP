@@ -56,6 +56,9 @@ func (g *gen) refs() []project.FuncRef {
 	for _, a := range p.Assets {
 		out = append(out, a.Var)
 	}
+	for _, h := range p.Handlers {
+		out = append(out, h.FuncRef)
+	}
 	for _, a := range p.Auth {
 		out = append(out, a.Verify)
 	}
@@ -148,6 +151,9 @@ func (g *gen) run(sb *strings.Builder) {
 	fmt.Fprintf(sb, "\tsrv.Mount(mux, %s)\n", q(p.Transport.Endpoint))
 	for _, a := range p.Assets {
 		fmt.Fprintf(sb, "\tmux.Handle(%s, http.FileServerFS(%s))\n", q(strings.TrimSuffix(a.Prefix, "/")+"/"), g.ref(a.Var))
+	}
+	for _, h := range p.Handlers {
+		fmt.Fprintf(sb, "\tmux.HandleFunc(%s, %s)\n", q(h.Pattern), g.ref(h.FuncRef))
 	}
 	sb.WriteString("\n")
 

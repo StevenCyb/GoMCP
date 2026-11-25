@@ -19,6 +19,7 @@ var featureModifiers = map[string]map[string]bool{ //nolint:gochecknoglobals // 
 	"Middleware":   set(),
 	"Setup":        set(),
 	"Teardown":     set(),
+	"HTTPHandler":  set(),
 	"Auth":         set("AuthServer", "AuthScope"),
 }
 
@@ -89,6 +90,8 @@ func (c *collector) funcDecl(f *file, fd *ast.FuncDecl) {
 		}
 	case "Auth":
 		c.auth(feature, a, fd, ref)
+	case "HTTPHandler":
+		c.httpHandler(feature, fd, ref)
 	}
 }
 

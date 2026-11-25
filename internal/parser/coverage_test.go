@@ -126,3 +126,44 @@ func TestParseSyntaxErrorInSource(t *testing.T) {
 	msg := parseErr(t, map[string]string{fileA: "package api\nfunc {"})
 	assert.Contains(t, msg, fileA)
 }
+
+const handlerHeader = "package api\n\nimport \"net/http\"\n\n"
+
+func TestHTTPHandlers(t *testing.T) {
+	p := parse(t, map[string]string{fileA: handlerHeader +
+		"// @MCP.HTTPHandler(\"POST /elicitation/complete\")\nfunc Complete(w http.ResponseWriter, r *http.Request) {}\n" +
+		"// @MCP.HTTPHandler(\"GET /connect\")\nfunc Page(http.ResponseWriter, *http.Request) {}\n" +
+		"// @MCP.HTTPHandler(\"POST /completion/{id}\")\nfunc ByID(w http.ResponseWriter, r *http.Request) {}\n"})
+	require.Len(t, p.Handlers, 3)
+	assert.Equal(t, "POST /completion/{id}", p.Handlers[2].Pattern, "wildcards of http.ServeMux are allowed")
+	assert.Equal(t, "POST /elicitation/complete", p.Handlers[0].Pattern)
+	assert.Equal(t, "Complete", p.Handlers[0].Name)
+	assert.Equal(t, "GET /connect", p.Handlers[1].Pattern)
+	assert.Equal(t, "Page", p.Handlers[1].Name)
+}
+
+func TestHTTPHandlerErrors(t *testing.T) {
+	tests := []struct {
+		name, source, contains string
+	}{
+		{"no pattern", "// @MCP.HTTPHandler\nfunc H(w http.ResponseWriter, r *http.Request) {}\n", "needs a ServeMux pattern"},
+		{"empty pattern", "// @MCP.HTTPHandler(\"\")\nfunc H(w http.ResponseWriter, r *http.Request) {}\n", "needs a ServeMux pattern"},
+		{"invalid pattern", "// @MCP.HTTPHandler(\"POST\")\nfunc H(w http.ResponseWriter, r *http.Request) {}\n", "is not valid"},
+		{"one parameter", "// @MCP.HTTPHandler(\"POST /x\")\nfunc H(w http.ResponseWriter) {}\n", "http.ResponseWriter, *http.Request"},
+		{"a result", "// @MCP.HTTPHandler(\"POST /x\")\nfunc H(w http.ResponseWriter, r *http.Request) error { return nil }\n", "without results"},
+		{"wrong types", "// @MCP.HTTPHandler(\"POST /x\")\nfunc H(a string, b int) {}\n", "http.ResponseWriter, *http.Request"},
+		{"request by value", "// @MCP.HTTPHandler(\"POST /x\")\nfunc H(w http.ResponseWriter, r http.Request) {}\n", "http.ResponseWriter, *http.Request"},
+		{"with receiver", "// @MCP.HTTPHandler(\"POST /x\")\nfunc (h T) H(w http.ResponseWriter, r *http.Request) {}\ntype T struct{}\n", "receiver"},
+		{"modifier", "// @MCP.HTTPHandler(\"POST /x\")\n// @MCP.Hint(readOnly)\nfunc H(w http.ResponseWriter, r *http.Request) {}\n", "Hint is not valid on a HTTPHandler"},
+		{"overlapping wildcards", "// @MCP.HTTPHandler(\"POST /x/{a}\")\nfunc A(w http.ResponseWriter, r *http.Request) {}\n// @MCP.HTTPHandler(\"POST /x/{b}\")\nfunc B(w http.ResponseWriter, r *http.Request) {}\n", "conflicts"},
+		{"same pattern twice", "// @MCP.HTTPHandler(\"POST /x\")\nfunc A(w http.ResponseWriter, r *http.Request) {}\n// @MCP.HTTPHandler(\"POST /x\")\nfunc B(w http.ResponseWriter, r *http.Request) {}\n", "conflicts"},
+		{"same as the endpoint", "// @MCP.HTTPHandler(\"/mcp\")\nfunc H(w http.ResponseWriter, r *http.Request) {}\n", "conflicts"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			msg := parseErr(t, map[string]string{fileA: handlerHeader + tt.source})
+			assert.Contains(t, msg, tt.contains)
+			assert.Contains(t, msg, "a.go:")
+		})
+	}
+}

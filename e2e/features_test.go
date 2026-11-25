@@ -345,10 +345,42 @@ func TestFeatures(t *testing.T) {
 		assert.Equal(t, []any{"work", "private", "idea"}, formProps["tag"].(obj)["enum"])
 		assert.InDelta(t, 5, formProps["priority"].(obj)["maximum"], 0)
 
-		// URL elicitation: declined means no wait; the page backend of the example is not part of this process
+		// URL elicitation: the sign-in page is served by the example itself (@MCP.HTTPHandler)
+		postForm := func(form string) *http.Response {
+			req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, base+"/connect", strings.NewReader(form))
+			require.NoError(t, err)
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			resp, err := http.DefaultClient.Do(req)
+			require.NoError(t, err)
+			return resp
+		}
 		c.answer = func(method string, params obj) obj {
 			assert.Equal(t, "url", params["mode"])
-			assert.True(t, strings.HasPrefix(params[keyURL].(string), "https://login.example.local/connect?e="))
+			_, id, found := strings.Cut(params[keyURL].(string), "/connect?e=")
+			require.True(t, found, "the url carries the elicitation id")
+
+			page, err := http.DefaultClient.Do(mustGet(t, base+"/connect?e="+id))
+			require.NoError(t, err)
+			body, err := io.ReadAll(page.Body)
+			_ = page.Body.Close()
+			require.NoError(t, err)
+			assert.Contains(t, string(body), `value="`+id+`"`)
+
+			done := postForm("e=" + id) // the user presses the button
+			_ = done.Body.Close()
+			assert.Equal(t, http.StatusOK, done.StatusCode)
+			return obj{keyAction: valAccept}
+		}
+		connected := c.tool("connect_account", obj{})
+		assert.False(t, isError(connected), "%v", connected)
+
+		unknown := postForm("e=nope")
+		_ = unknown.Body.Close()
+		assert.Equal(t, http.StatusNotFound, unknown.StatusCode, "an unknown id is refused")
+
+		// declined means no wait
+		c.answer = func(method string, params obj) obj {
+			assert.Equal(t, "url", params["mode"])
 			return obj{keyAction: "decline"}
 		}
 		assert.True(t, isError(c.tool("connect_account", obj{})))
