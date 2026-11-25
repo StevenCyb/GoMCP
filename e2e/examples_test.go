@@ -17,6 +17,8 @@ func TestExamples(t *testing.T) {
 	// the environment of the test process reaches the server, see runner.environment
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "hello.txt"), []byte("file body"), 0o600))
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "sub"), 0o750))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "sub", "deep.txt"), []byte("deep body"), 0o600))
 	t.Setenv("FILES_ROOT", dir)
 	t.Setenv("TODO_FILE", filepath.Join(t.TempDir(), "todo.json"))
 	web := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("page body")) }))
@@ -38,6 +40,9 @@ func TestExamples(t *testing.T) {
 			require.Nil(t, rpcErr)
 			assert.Equal(t, "file body", read["contents"].([]any)[0].(obj)[keyText])
 
+			_, rpcErr, _ = c.call("resources/read", obj{keyURI: "file:///sub/deep.txt"}, nil)
+			assert.NotNil(t, rpcErr, "a template variable matches one path segment, so subdirectory files are not reachable")
+
 			_, rpcErr, _ = c.call("resources/read", obj{keyURI: "file:///../secret.txt"}, nil)
 			assert.NotNil(t, rpcErr, "a path outside the root is not found")
 			res := mustTool(t, c, "list_files", obj{"dir": "../.."})
@@ -53,6 +58,17 @@ func TestExamples(t *testing.T) {
 			require.Nil(t, rpcErr)
 			assert.Contains(t, read["contents"].([]any)[0].(obj)[keyText], "ship")
 			assert.NotContains(t, read["contents"].([]any)[0].(obj)[keyText], "write tests")
+
+			// a client that listens to the open list is told when it changes
+			c.send("subscriptions/listen", obj{"notifications": obj{"resourceSubscriptions": []any{"todo:///open"}}})
+			assert.Equal(t, "notifications/subscriptions/acknowledged", c.next()[keyMethod])
+			_, rpcErr, notes := c.call("tools/call", obj{keyName: "add_todo", keyArguments: obj{keyText: "watched"}}, nil)
+			require.Nil(t, rpcErr)
+			updated := notesOf(notes, "notifications/resources/updated")
+			if len(updated) == 0 {
+				updated = append(updated, c.next())
+			}
+			assert.Equal(t, "todo:///open", updated[0][keyParams].(obj)[keyURI])
 
 			prompt, rpcErr, _ := c.call("prompts/get", obj{keyName: "plan_my_day"}, nil)
 			require.Nil(t, rpcErr)

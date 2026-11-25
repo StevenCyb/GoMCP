@@ -174,7 +174,7 @@ func TestStdio(t *testing.T) {
 		}, func(method string, _ obj) obj {
 			asked++
 			assert.Equal(t, "roots/list", method)
-			return obj{"roots": []any{obj{keyURI: "file:///work/a"}}}
+			return obj{"roots": []any{obj{keyURI: rootA}}}
 		})
 		require.Nil(t, rpcErr)
 		assert.False(t, isError(res), "%v", res)

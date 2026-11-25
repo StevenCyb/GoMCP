@@ -2,7 +2,7 @@
 
 A read-only browser for one directory, for a local client over stdio.
 
-- Resource template `file:///{path}`: reads a text file (up to 1 MiB).
+- Resource template `file:///{path}`: reads a text file directly in the root, e.g. `file:///readme.txt` (up to 1 MiB). A template variable matches one path segment, so files in subdirectories are not reachable through it.
 - Tool `list_files`: the entries of a directory.
 - Tool `search_files`: files whose name contains a text.
 

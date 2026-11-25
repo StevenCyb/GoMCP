@@ -30,6 +30,8 @@ const (
 	metaVersion  = "io.modelcontextprotocol/protocolVersion"
 	metaCaps     = "io.modelcontextprotocol/clientCapabilities"
 	keyURI       = "uri"
+	rootA        = "file:///work/a"
+	rootB        = "file:///work/b"
 	keyTaskID    = "taskId"
 	keyStatus    = "status"
 	keyAction    = "action"

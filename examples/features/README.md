@@ -22,8 +22,10 @@ every feature through a test client, so it stays working.
 | `static_assets.go` | embedded assets, icons by relative path | Static assets and icons |
 | `auth.go` | OAuth resource server, API key, scopes | Authentication |
 | `tools.go` | typed input/output, schema tags, hints, results, errors, `_meta` | Tools |
-| `elicitation.go` | form and URL elicitation, confirmation | Asking the client |
-| `sampling.go` | sampling, `Requires` | Sampling |
+| `elicitation.go` | form and URL elicitation, confirmation | Asking the user (forms) |
+| `sampling.go` | sampling: the client's model picks a tag, answer checked, `Requires` | Sampling |
+| `progress.go` | progress and log notifications while a tool runs | Progress and logs |
+| `roots.go` | roots: the folders the client works in, `Requires` | Roots |
 | `task_import.go` | tasks, progress, cancellation, roots | Long-running tasks, Roots |
-| `resources.go` | templates, subscriptions, annotations, paginated listing | Resources |
+| `resources.go` | templates, subscriptions, annotations, listing | Resources |
 | `prompts_completion.go` | prompts, embedded resource, static and dynamic completion | Prompts and completion |

@@ -51,7 +51,7 @@ gomcp serve .
 Get:
 
 - A Streamable HTTP MCP endpoint at `/mcp` with `tools/list` and `tools/call`.
-- Input and output schemas derived from your Go types.
+- An input schema derived from your Go types (and an output schema when the handler returns a struct).
 - Auto-generated bootstrap (`main`, transport, auth, lifecycle wiring).
 
 > More runnable servers are in [`examples/`](examples) (index with how to run each):
@@ -68,7 +68,7 @@ You write the handler, GoMCP writes everything around it.
 - **Handlers stay plain Go.** A function with a typed input and output plus an `@MCP.Tool` comment is the whole tool. Schemas, validation, registration and the server `main` are generated from your types.
 - **Nothing lands in your module.** The generated code is built with Go's overlay mechanism: no generated files to commit or review, and no `go:generate` step.
 - **Remote or local from one codebase.** The same code runs as an HTTP server for many clients (`gomcp serve`) or as a local process that one client starts (`gomcp stdio`).
-- **The newest spec.** It implements MCP 2026-07-28 (stateless, `server/discover`, multi round-trip requests, tasks) from day one.
+- **The newest spec.** It implements MCP 2026-07-28 (stateless, `server/discover`, input requests, tasks) from day one.
 - **Tested end to end.** The `examples/features` project runs through a test client over HTTP and stdio in CI on Linux and Windows, and a smoke test of every merged commit runs on Linux, Windows and macOS.
 
 It has its own runtime (`pkg/mcp`), so you can also skip the annotations and register tools in code. If you prefer to write every registration yourself, or need a revision older than 2026-07-28, another MCP library for Go is the better fit.
@@ -93,7 +93,6 @@ gomcp serve .
 - [Install](#install)
 - [Basics](#basics)
   - [Annotation syntax](#annotation-syntax)
-  - [How it runs](#how-it-runs)
 - [CLI](#cli)
   - [init](#init)
   - [build, serve and watch](#build-serve-and-watch)
@@ -116,8 +115,7 @@ gomcp serve .
   - [Defining a tool](#defining-a-tool)
   - [Hints, metadata and requirements](#hints-metadata-and-requirements)
   - [Results and errors](#results-and-errors)
-  - [Asking the client](#asking-the-client)
-  - [Form elicitation](#form-elicitation)
+  - [Asking the user (forms)](#asking-the-user-forms)
   - [URL elicitation](#url-elicitation)
   - [Sampling](#sampling)
   - [Roots](#roots)
@@ -141,14 +139,18 @@ gomcp serve .
 
 ### Annotation syntax
 
-Annotations are comment lines. One optional positional value, the rest is `key="value"`, `key=1` or a bare flag. The doc comment above is the description. Types in the signature become the JSON schemas.
+Annotations are comment lines. Arguments are comma-separated: positional values (a name, or several for `AuthScopes`, `Hint` and `Requires`), `key="value"`, `key=1` or bare flags such as `readOnly`. The doc comment above is the description. Types in the signature become the JSON schemas.
 
 ```go
 // Adds a short text note.
 //
 // @MCP.Tool("add_note", title="Add note")
 // @MCP.AuthScopes("notes:write")
-func Add(ctx mcp.Context, in AddIn) (Note, error) { ... }
+func Add(ctx mcp.Context, in AddIn) (Note, error) {
+	note := Note{ID: newID(), Text: in.Text, Tag: in.Tag}
+	notes[note.ID] = note
+	return note, nil
+}
 
 type AddIn struct {
 	Text string `json:"text" desc:"Note body" min:"1" max:"500"`        // required: no omitempty
@@ -156,16 +158,9 @@ type AddIn struct {
 }
 ```
 
-Struct tags: `desc enum min max default format`. A period at the end of an annotation line is ignored.
+Struct tags: `desc enum min max default format`, plus `uri` (binds a resource URI variable, see [Resources](#static-and-templated-resources)) and `header`. A field is required unless it has `omitempty` or is a pointer; `json:"-"` hides it. A period at the end of an annotation line is ignored; any other text after the closing `)` is an error, so put comments on their own line.
 
-### How it runs
-
-gomcp reads your annotations, generates a `main` package in memory, and builds it with `go build -overlay`, so nothing is written into your module.
-
-```mermaid
-flowchart LR
-    A["your .go files<br/>+ @MCP.* comments"] -->|parse| B["project model"] -->|generate| C["main.go (in memory)"] -->|"go build -overlay"| D["binary"] -->|"run + .env"| E["MCP server"]
-```
+The examples share these helpers (see [examples/features/model.go](examples/features/model.go)): `type Note struct{ ID, Text, Tag string }`, `type IDIn struct{ ID string }` (tag `json:"id"`) and `var notes map[string]Note`. `newID`, `ids`, `allNotes` and `upload` stand for your own code.
 
 ## CLI
 
@@ -181,7 +176,7 @@ gomcp init ./hello --no-get                 # only write the files
 
 ### build, serve and watch
 
-`build` compiles a single binary, `serve` builds and runs it as an HTTP server, `watch` rebuilds and restarts on every `.go` change and keeps the old server if a rebuild fails. `stdio` builds and runs it for a local client, see [Local or remote](#local-or-remote).
+`build` compiles a single binary, `serve` builds and runs it as an HTTP server, `watch` rebuilds and restarts when a `.go` file (not `_test.go`), `go.mod`, `go.sum` or `.env` changes, and keeps the old server if the rebuild fails. `stdio` builds and runs it for a local client, see [Local or remote](#local-or-remote).
 
 ```sh
 gomcp build ./examples/features ./bin/notes   # one binary, contains both transports
@@ -245,8 +240,8 @@ What changes with stdio:
 - **No authentication.** The caller is the process that started the server, so `@MCP.Auth` is ignored and `@MCP.AuthScopes` are not checked. Anyone who can start the binary can use every feature.
 - **One client per process.** There are no HTTP headers, origins or listen address (`--addr` does not apply).
 - **Only protocol messages on stdout.** Log to stderr (the `log` package does). A `fmt.Println` in your code or setup breaks the connection.
-- **No `gomcp watch`.** A restart would end the client's connection, so `watch` refuses stdio.
-- **Relative icons are left out.** They need the server's URL, which stdio does not have. Use absolute or `data:` URLs.
+- **No stdio mode for `gomcp watch`.** A restart would end the client's connection. Use `gomcp stdio` or the built binary with `--stdio`.
+- **Relative icons are left out** unless a base URL is configured (`@MCP.Server(baseURL=...)`), because stdio has no server URL to resolve them against. Use absolute or `data:` URLs.
 - **Same behaviour otherwise.** Tools, resources, prompts, elicitation, sampling, roots, tasks and `subscriptions/listen` work the same. A listen request stays open until the client cancels it with `notifications/cancelled`, and a cancelled request gets no response.
 
 ## Server
@@ -264,7 +259,7 @@ package api
 
 ### Stateless requests
 
-No sessions and no `initialize`. Every request carries the protocol version and the client's capabilities, so any instance can answer it. Headers `Mcp-Protocol-Version`, `Mcp-Method` and `Mcp-Name` mirror the body for gateways. Mismatch is `-32020`, unknown version `-32022`.
+No sessions and no `initialize`. Every request carries the protocol version and the client's capabilities (in its `_meta` field, the metadata every MCP request has), so any instance can answer it. Instances behind one endpoint must share `GOMCP_STATE_KEY`, which signs the `requestState` of [input requests](#asking-the-user-forms). Headers `Mcp-Protocol-Version`, `Mcp-Method` and `Mcp-Name` mirror the body for gateways. Mismatch is `-32020`, unknown version `-32022`.
 
 ```go
 // nothing to write: gomcp validates headers and _meta, and answers server/discover
@@ -282,7 +277,7 @@ sequenceDiagram
 
 ### Transport settings
 
-These settings apply to HTTP; over stdio there is no endpoint, origin or keep-alive ([Local or remote](#local-or-remote)). One endpoint, POST only (GET and DELETE answer `405`). Origins are checked (`403`), lists are paged, listen streams get keep-alive comments.
+These settings apply to HTTP; over stdio there is no endpoint, origin or keep-alive ([Local or remote](#local-or-remote)). One endpoint, POST only (GET and DELETE answer `405`). Origins are checked (`403`): without `@MCP.AllowedOrigin` only localhost origins pass, and a request without an `Origin` header is not checked. Lists are paged only if you set `@MCP.PageSize` (default: everything at once). Listen streams get keep-alive comments (default `20s`).
 
 ```go
 // @MCP.Endpoint("/mcp")
@@ -303,7 +298,7 @@ package api
 
 ### Middleware
 
-Wraps calls for logging, metrics or rate limits. Declare with `@MCP.Middleware`, attach with `@MCP.Use(fn)` at package level (everything) or on one feature.
+Wraps tool calls, prompt gets, resource reads and completions (not lists or `server/discover`) for logging, metrics or rate limits. Attach with `@MCP.Use(fn)` at package level (everything) or on one feature. `@MCP.Middleware` on the function is optional: it only makes the parser check the signature.
 
 ```go
 // @MCP.Middleware
@@ -311,7 +306,22 @@ func Logging(ctx mcp.Context, req mcp.Request, next mcp.Handler) (any, error) {
 	log.Printf("%s %s", req.Kind, req.Name)
 	return next(ctx, req)
 }
-// package level: @MCP.Use(api.Logging)    on a feature: @MCP.Use(api.Logging)
+
+// on one tool:
+// @MCP.Tool("add_note", description="Adds a note")
+// @MCP.Use(api.Logging)
+func Add(ctx mcp.Context, in AddIn) (Note, error) {
+	note := Note{ID: newID(), Text: in.Text}
+	notes[note.ID] = note
+	return note, nil
+}
+```
+
+Or for every call, in a package comment:
+
+```go
+// @MCP.Use(api.Logging)
+package api
 ```
 
 ```mermaid
@@ -333,27 +343,32 @@ func Teardown() { db.Close() }
 
 ```mermaid
 flowchart LR
-    S1["Setup"] --> S2["listen on GOMCP_ADDR"] --> S3["serve"] --> S4["SIGINT / SIGTERM"] --> S5["close streams, HTTP shutdown"] --> S6["Teardown"]
+    S1["Setup"] --> S2["listen on GOMCP_ADDR (HTTP only)"] --> S3["serve"] --> S4["SIGINT / SIGTERM"] --> S5["close streams, HTTP shutdown"] --> S6["Teardown"]
 ```
 
 ### Static assets and icons
 
-Serve embedded files (icons, images) from the same server. Relative icon paths on any feature resolve to the served URL.
+Serve embedded files (icons, images) from the same server, without authentication. The prefix must equal the embedded directory name (`//go:embed assets` goes with `/assets`). A relative icon path such as `assets/add.svg` on any feature becomes `<base URL or request host>/assets/add.svg`.
 
 ```go
 // @MCP.ServeAssets("/assets")
 //go:embed assets
 var Assets embed.FS
 
-// @MCP.Tool("add_note")
-// @MCP.Icon("assets/add.svg")   // becomes http://host/assets/add.svg
+// @MCP.Tool("add_note", description="Adds a note")
+// @MCP.Icon("assets/add.svg")
+func Add(ctx mcp.Context, in AddIn) (Note, error) {
+	note := Note{ID: newID(), Text: in.Text}
+	notes[note.ID] = note
+	return note, nil
+}
 ```
 
 ## Authentication
 
 ### Bearer and API keys
 
-For internal tokens and API keys: your verifier checks the token and returns the caller. Failure is a plain `401`. Several `@MCP.Auth` are allowed, the first success wins.
+For internal tokens and API keys: your verifier checks the token and returns the caller. Failure is a plain `401` (`Bearer error="invalid_token"`, the verifier's error text is not sent). Several `@MCP.Auth` are allowed, the first success wins.
 
 ```go
 // @MCP.Auth(type="bearer")
@@ -365,13 +380,17 @@ func VerifyAPIKey(ctx context.Context, token string) (mcp.Principal, error) {
 
 ### OAuth resource server
 
-gomcp verifies tokens, it never issues them. Authentication belongs to HTTP: over stdio it is ignored ([Local or remote](#local-or-remote)). It serves the protected resource metadata, challenges unauthenticated calls and checks scopes. Needs `resource=`, an authorization server and scopes.
+gomcp verifies tokens, it never issues them. Authentication belongs to HTTP: over stdio it is ignored ([Local or remote](#local-or-remote)). It serves the protected resource metadata, challenges unauthenticated calls and checks scopes. Needs `resource=`. `@MCP.AuthServer` and `@MCP.AuthScope` declare the issuer and scopes for the metadata and the challenge (default scopes go into the `401` challenge).
 
 ```go
 // @MCP.Auth(type="oauth", resource="https://notes.example.com/mcp")
 // @MCP.AuthServer("https://auth.example.com")
 // @MCP.AuthScope("notes:read", description="Read notes", default)
-func VerifyToken(ctx context.Context, token string) (mcp.Principal, error) { ... }
+func VerifyToken(ctx context.Context, token string) (mcp.Principal, error) {
+	claims, err := parseJWT(token) // your JWT library: check signature, issuer, audience and expiry
+	if err != nil { return mcp.Principal{}, err }
+	return mcp.Principal{Subject: claims.Subject, Scopes: claims.Scopes}, nil
+}
 ```
 
 ```mermaid
@@ -388,14 +407,15 @@ sequenceDiagram
 
 ### Scopes
 
-Limit a feature to callers with certain scopes. A missing scope gives `403 insufficient_scope`, so the client can ask the user for more permission. In handlers, `ctx.Principal()` is the caller.
+Limit a feature to callers with certain scopes. A missing scope gives `403 insufficient_scope`, so the client can ask the user for more permission. Needs an `@MCP.Auth`: without one the scopes are not checked. They are checked on call, get and read, not on list. In handlers, `ctx.Principal()` is the caller.
 
 ```go
 // @MCP.Tool("delete_note")
 // @MCP.AuthScopes("notes:write")
 func Delete(ctx mcp.Context, in IDIn) (mcp.Empty, error) {
-	who := ctx.Principal().Subject
-	...
+	log.Printf("%s deletes %s", ctx.Principal().Subject, in.ID) // the caller
+	delete(notes, in.ID)
+	return mcp.Empty{}, nil
 }
 ```
 
@@ -405,9 +425,19 @@ func Delete(ctx mcp.Context, in IDIn) (mcp.Empty, error) {
 
 A tool lets the model do something. Input schema comes from the input struct; a struct result also gives an output schema. Invalid arguments become tool errors the model can fix itself.
 
+The signature is always `func(ctx mcp.Context, in In) (Out, error)`.
+
 ```go
+type IDIn struct {
+	ID string `json:"id" desc:"Note id"`
+}
+
 // @MCP.Tool("get_note", description="Returns a note by id")
-func Get(ctx mcp.Context, in IDIn) (Note, error) { ... }   // func(ctx, In) (Out, error)
+func Get(ctx mcp.Context, in IDIn) (Note, error) {
+	note, ok := notes[in.ID]
+	if !ok { return Note{}, mcp.ToolError("note not found") }
+	return note, nil
+}
 ```
 
 ```mermaid
@@ -420,20 +450,27 @@ flowchart LR
 
 ### Hints, metadata and requirements
 
-Hints tell clients what a tool does (`readOnly`, `destructive`, `idempotent`, `openWorld`). `@MCP.Requires` names client capabilities the tool needs; without them the call fails early with `-32021`.
+Hints tell clients what a tool does (`readOnly`, `destructive`, `idempotent`, `openWorld`). `@MCP.Requires` names client capabilities the tool needs (`sampling`, `roots`, `elicitation`, `elicitation="url"`). It is not shown in `tools/list`; it is checked only when the tool is called. If the client did not declare them, the call fails with `-32021` (HTTP 400) before the handler runs.
 
 ```go
-// @MCP.Tool("delete_note")
+// @MCP.Tool("delete_note", description="Deletes a note")
 // @MCP.Hint(destructive)
-// @MCP.Requires(elicitation)          // also: sampling, roots, elicitation="url"
+// @MCP.Requires(elicitation)
 // @MCP.Meta(team="docs")
+func Delete(ctx mcp.Context, in IDIn) (mcp.Empty, error) {
+	ans, action, err := mcp.Elicit[Confirm](ctx, "Delete "+in.ID+"?") // Confirm: see Asking the user
+	if err != nil { return mcp.Empty{}, err }
+	if action != mcp.Accept || !ans.Confirm { return mcp.Empty{}, mcp.ToolError("not confirmed") }
+	delete(notes, in.ID)
+	return mcp.Empty{}, nil
+}
 ```
 
 ### Results and errors
 
-Return a struct (structured + text), a string, or `mcp.Result[T]` to add content such as links. `mcp.ToolError` is shown to the model; protocol errors go to the client.
+Return a struct (structured + text), a string, or `mcp.Result[T]` to send your own content blocks, such as links. If `Content` is set it replaces the automatic JSON text block; the structured value is still sent as `structuredContent`. `mcp.ToolError` is shown to the model; protocol errors go to the client.
 
-> Any error a tool returns, not only `mcp.ToolError`, is sent to the model as text. Never put secrets, DSNs or file paths in error messages.
+> Any other error a tool returns, not only `mcp.ToolError`, is sent to the model as text. Only an `mcp.Error` (for example `mcp.ErrInvalidParams`) becomes a protocol error. Never put secrets, DSNs or file paths in error messages.
 
 ```go
 func Get(ctx mcp.Context, in IDIn) (mcp.Result[Note], error) {
@@ -443,122 +480,334 @@ func Get(ctx mcp.Context, in IDIn) (mcp.Result[Note], error) {
 }
 ```
 
-### Asking the client
+### Asking the user (forms)
 
-The server cannot call the client. Calls that need an answer return `mcp.ErrInputRequired`: return it unchanged. gomcp sends `input_required`, the client answers and retries, and your handler runs again from the top with the answer. Ask first, act after.
+One call, `mcp.Elicit[T]`, asks the user a question while your tool runs. `T` is a struct and becomes the form the client shows. A yes/no confirmation is a form with one `bool` field, a larger questionnaire is a form with more fields. There is nothing else to learn: the two examples below differ only in the struct. Needs `@MCP.Requires(elicitation)`.
 
-```go
-ans, action, err := mcp.Elicit[Confirm](ctx, "Delete it?")
-if err != nil { return out, err }          // ErrInputRequired: gomcp asks, then reruns
-```
+`Elicit` returns the filled struct and the user's action: `mcp.Accept`, `mcp.Decline` or `mcp.Cancel`. On decline and cancel the struct is the zero value and the error is nil, so use the struct only on `Accept`.
+
+**How the call works.** The server cannot call the client in the middle of a request, so outside a task:
+
+- On the first run `Elicit` returns `mcp.ErrInputRequired`. Return it (or an error wrapping it) at once and do not continue with zero values.
+- gomcp sends `input_required`, the client shows the form and retries, and your handler runs again from the top. This time `Elicit` returns the answer.
+- Everything before the ask runs again on every retry (twice for one ask, three times for two). So ask first, act after, and keep the order of asks the same on every run.
+- Inside a long-running task (`@MCP.Task`, client supports tasks) nothing is rerun: the call blocks until the client answers with `tasks/update`.
 
 ```mermaid
 sequenceDiagram
     participant C as Client
     participant S as Server
-    C->>S: tools/call
-    S-->>C: input_required {inputRequests, requestState}
-    Note over C: asks the user or its model
-    C->>S: tools/call + inputResponses + requestState
-    Note over S: handler runs again, call returns the answer
+    C->>S: tools/call delete_note {id: 7}
+    S-->>C: input_required {elicitation/create: "Delete 7?"[, requestState]}
+    Note over C: shows the form to the user
+    C->>S: tools/call + inputResponses [+ requestState]
+    Note over S: handler runs again, Elicit returns the answer
     S-->>C: result
 ```
 
-### Form elicitation
-
-Ask the user a question or confirmation. `T` is a flat struct; tags (`enum`, `min`, `max`, `default`) shape the form. The action is `mcp.Accept`, `mcp.Decline` or `mcp.Cancel`.
+**Example 1: confirmation.** One `bool` field.
 
 ```go
 type Confirm struct {
 	Confirm bool `json:"confirm" desc:"Really delete?" default:"false"`
 }
 
-ans, action, err := mcp.Elicit[Confirm](ctx, "Delete "+in.ID+"?")
-if err != nil { return mcp.Empty{}, err }
-if action != mcp.Accept || !ans.Confirm { return mcp.Empty{}, mcp.ToolError("not confirmed") }
+// @MCP.Tool("delete_note", description="Deletes a note")
+// @MCP.Requires(elicitation)
+func Delete(ctx mcp.Context, in IDIn) (mcp.Empty, error) {
+	// 1st run: no answer yet -> ErrInputRequired, gomcp asks the client.
+	// 2nd run (after the retry): same line, now returns the user's answer.
+	ans, action, err := mcp.Elicit[Confirm](ctx, "Delete "+in.ID+"?")
+	if err != nil { return mcp.Empty{}, err } // returns ErrInputRequired on the 1st run
+	if action != mcp.Accept || !ans.Confirm { return mcp.Empty{}, mcp.ToolError("not confirmed") }
+	// ... only here, with the answer, do the real work
+	return mcp.Empty{}, nil
+}
 ```
+
+**Example 2: several fields.** Same call, bigger struct.
+
+```go
+type NoteDetails struct {
+	Tag      string `json:"tag"               desc:"Category" enum:"work,private,idea"`
+	Priority int    `json:"priority"          desc:"Priority" min:"1" max:"5" default:"3"`
+	Comment  string `json:"comment,omitempty" desc:"Optional comment"`
+}
+
+// @MCP.Tool("detail_note", description="Asks the user for extra details and stores them on the note")
+// @MCP.Requires(elicitation)
+func Detail(ctx mcp.Context, in IDIn) (Note, error) {
+	note := notes[in.ID]
+	d, action, err := mcp.Elicit[NoteDetails](ctx, "Add details for "+in.ID)
+	if err != nil { return Note{}, err }
+	if action != mcp.Accept { return note, nil } // declined or cancelled: keep as is
+	note.Tag, note.Priority, note.Comment = d.Tag, d.Priority, d.Comment
+	notes[note.ID] = note
+	return note, nil
+}
+```
+
+**What `T` may contain.** Fields may be string, bool, int, float or `time.Time`; a `[]string` with an `enum` tag is a multi-select. A field is optional with `omitempty` or as a pointer. Tags: `desc`, `format`, `enum`, `min`, `max`, `default`. They are sent to the client as the form schema; gomcp does not check the answer against them again. Nested structs, maps and other lists make `Elicit` return an error (`elicitation form: ...`) at runtime, not at generation. `@MCP.Elicitation` on the struct is an optional marker: the parser only checks that it sits on a struct.
+
+**Capability.** `@MCP.Requires(elicitation)` checks the client's capability before the handler runs and answers `-32021` otherwise. Without it, `Elicit` itself fails with an error wrapping `mcp.ErrCapability` (test with `errors.Is`), which the model sees as a tool error.
+
+Full version: [examples/features/elicitation.go](examples/features/elicitation.go). URL elicitation, sampling and roots below use the same retry flow, only the question differs.
 
 ### URL elicitation
 
-Send the user to your own web page (sign-in, payment). The page's backend calls `mcp.CompleteElicitation(id)` when done; the waiting handler continues. Approving before the client retries is fine.
+Send the user to your own web page (sign-in, payment) and wait until it reports back. Needs `@MCP.Requires(elicitation="url")`. A decline or cancel makes `ElicitURL` return an error wrapping `mcp.ErrDeclined`.
+
+The page cannot call gomcp. Your web backend tells an endpoint in the MCP server's process, and that endpoint calls `mcp.CompleteElicitation(id)`. That endpoint needs a server built by hand ([Using pkg/mcp by hand](#using-pkgmcp-by-hand)).
+
+> gomcp does not check who completes: the client knows the `id` too (it is in the URL). Accept calls only from your own backend, and only after the user signed in on your page.
 
 ```go
-id, err := ctx.ElicitURL("Sign in", "https://example.com/connect?e={id}") // {id} is filled in
-if err != nil { return out, err }
-select {
-case <-ctx.ElicitDone(id): // closed by mcp.CompleteElicitation(id) on your page
-case <-ctx.Done():         // never closes for an unknown or expired id: always keep a way out
-	return out, ctx.Err()
-case <-time.After(10 * time.Minute):
-	return out, mcp.ToolError("sign-in timed out")
+// @MCP.Tool("connect_account", description="Links an account via a sign-in page")
+// @MCP.Requires(elicitation="url")
+func Connect(ctx mcp.Context, _ mcp.Empty) (mcp.Empty, error) {
+	id, err := ctx.ElicitURL("Sign in", "https://login.example.local/connect?e={id}") // {id} is filled in
+	if err != nil { return mcp.Empty{}, err } // 1st run: ErrInputRequired, gomcp asks the client
+	select {
+	case <-ctx.ElicitDone(id): // closed when your endpoint calls mcp.CompleteElicitation(id)
+		return mcp.Empty{}, nil
+	case <-ctx.Done():         // never closes for an unknown, expired or foreign id: always keep a way out
+		return mcp.Empty{}, ctx.Err()
+	case <-time.After(10 * time.Minute):
+		return mcp.Empty{}, mcp.ToolError("sign-in timed out")
+	}
 }
 ```
 
 ```mermaid
 sequenceDiagram
+    autonumber
     participant U as User
     participant C as Client
-    participant S as Server
-    S-->>C: input_required (url with ?e=id)
-    C->>U: open this page?
-    U->>S: your page calls CompleteElicitation(id)
-    C->>S: retry with accept
-    Note over S: ElicitDone(id) closed, handler continues
+    participant S as MCP server (mcp.example.local)
+    participant P as Your web backend (login.example.local)
+    C->>S: tools/call
+    S-->>C: input_required: open login.example.local/connect?e=id
+    Note over U,C: the client asks the user, who agrees
+    C->>S: retry (accepted)
+    Note over S: handler waits for ElicitDone(id)
+    U->>P: GET /connect?e=id (signs in)
+    P->>S: POST /elicitation/complete {id}
+    Note over S: handler continues
     S-->>C: result
 ```
 
+Steps 4 and 5 may happen before step 3: the user can finish before the client retries. The server remembers the `id` for 30 minutes.
+
+Steps 4 and 5, on `login.example.local` (your web backend, here in Go; any language works):
+
+```go
+http.HandleFunc("GET /connect", func(w http.ResponseWriter, r *http.Request) {
+	id := r.URL.Query().Get("e") // the {id} from the URL the MCP server sent
+	// ... sign the user in here ...
+	body, _ := json.Marshal(map[string]string{"id": id})
+	resp, err := http.Post("https://mcp.example.local/elicitation/complete", "application/json", bytes.NewReader(body))
+	if err != nil { http.Error(w, "could not report back", http.StatusBadGateway); return }
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent { http.Error(w, "could not report back", http.StatusBadGateway); return }
+	fmt.Fprint(w, "Done, you can close this page.")
+})
+```
+
+Step 5 arrives at `mcp.example.local`, in the MCP server's process (on the same `mux` as `srv.Mount`, see [Using pkg/mcp by hand](#using-pkgmcp-by-hand)). This is the only place that calls gomcp:
+
+```go
+mux.HandleFunc("POST /elicitation/complete", func(w http.ResponseWriter, r *http.Request) {
+	var in struct{ ID string `json:"id"` }
+	if json.NewDecoder(r.Body).Decode(&in) != nil || !mcp.CompleteElicitation(in.ID) {
+		http.Error(w, "unknown id", http.StatusNotFound) // unknown or expired
+		return
+	}
+	w.WriteHeader(http.StatusNoContent) // the waiting handler continues now
+})
+```
+
+Protect `POST /elicitation/complete` with your own authentication (see the warning above).
+
 ### Sampling
 
-Ask the client's own model for a completion, so your server needs no model access. The client must declare sampling; use `@MCP.Requires(sampling)`.
+Your server has no AI model. With sampling it borrows the model of the client: `ctx.Sample` sends a prompt to the client, the client's model answers, and you get the text back. The client chooses the model and may ask the user first. Needs `@MCP.Requires(sampling)`.
+
+Example: a tool that lets the model pick a tag for a note. The answer is untrusted text, so check it before you use it.
 
 ```go
-res, err := ctx.Sample(mcp.SampleReq{
-	System:    "Summarize in one sentence.",
-	Messages:  []mcp.SampleMsg{mcp.SampleText(mcp.RoleUser, text)},
-	MaxTokens: 120,
-})
-if err != nil { return out, err }
-return Out{Summary: res.Text}, nil
-```
+// @MCP.Tool("suggest_tag", description="Lets the model of the client pick a tag for a note")
+// @MCP.Requires(sampling)
+func SuggestTag(ctx mcp.Context, in IDIn) (Note, error) {
+	note, ok := notes[in.ID]
+	if !ok { return Note{}, mcp.ToolError("note not found") }
 
-### Roots
+	res, err := ctx.Sample(mcp.SampleReq{
+		System:    "Reply with exactly one word: work, private or idea.",
+		Messages:  []mcp.SampleMsg{mcp.SampleText(mcp.RoleUser, note.Text)},
+		MaxTokens: 10,
+	})
+	if err != nil { return Note{}, err } // returns ErrInputRequired on the first run
 
-Read the client's project roots, for example to know which folders to work on.
-
-```go
-roots, err := ctx.Roots()                  // @MCP.Requires(roots)
-if err != nil { return out, err }
-for _, r := range roots { use(r.URI) }
-```
-
-### Progress and logs
-
-Report progress when the client sent a progress token. Logs are sent only when the request asks for a log level.
-
-```go
-for i, item := range items {
-	ctx.Progress(float64(i+1), float64(len(items)), "importing "+item)
-}
-ctx.Log().Info("import done", "count", len(items))
-```
-
-### Long-running tasks
-
-Extension `io.modelcontextprotocol/tasks`. With `@MCP.Task` the server decides: a client that supports tasks gets a handle at once and polls; others get the result directly. Watch `ctx.Done()` for cancellation.
-
-```go
-// @MCP.Tool("import_notes")
-// @MCP.Task(optional, ttl="10m", poll="2s")     // optional | required
-func Import(ctx mcp.Context, _ mcp.Empty) (int, error) {
-	if ctx.Err() != nil { return 0, ctx.Err() }   // tasks/cancel
-	...
+	tag := strings.ToLower(strings.TrimSpace(res.Text))
+	if !slices.Contains([]string{"work", "private", "idea"}, tag) {
+		return Note{}, mcp.ToolError("the model did not return a valid tag")
+	}
+	note.Tag = tag
+	notes[note.ID] = note
+	return note, nil
 }
 ```
 
 ```mermaid
+sequenceDiagram
+    participant C as Client
+    participant S as Server
+    participant M as Model of the client
+    C->>S: tools/call suggest_tag
+    S-->>C: input_required {sampling/createMessage: prompt}
+    C->>M: prompt
+    M-->>C: "work"
+    C->>S: tools/call + inputResponses
+    Note over S: handler runs again, ctx.Sample returns "work", tag is checked
+    S-->>C: result {note with tag}
+```
+
+### Roots
+
+The client tells the server which folders it works in, for example the project open in an IDE. `ctx.Roots` returns them as URIs, so a tool does not have to ask the user for a path. Needs `@MCP.Requires(roots)`.
+
+Example: a tool that reports the folders of the client. The URIs (`file:///...`) point to the client's machine: a remote server cannot read them, a server started over stdio runs on the same machine and can.
+
+```go
+type RootsOut struct {
+	Roots []string `json:"roots"`
+}
+
+// @MCP.Tool("list_roots", description="Lists the folders the client works in")
+// @MCP.Hint(readOnly)
+// @MCP.Requires(roots)
+func ListRoots(ctx mcp.Context, _ mcp.Empty) (RootsOut, error) {
+	roots, err := ctx.Roots()
+	if err != nil { return RootsOut{}, err } // returns ErrInputRequired on the first run
+	out := RootsOut{Roots: []string{}}
+	for _, r := range roots { out.Roots = append(out.Roots, r.URI) }
+	return out, nil
+}
+```
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant S as Server
+    C->>S: tools/call list_roots
+    S-->>C: input_required {roots/list}
+    Note over C: collects the folders the user has open
+    C->>S: tools/call + inputResponses {file:///work/a, ...}
+    Note over S: handler runs again, ctx.Roots returns them
+    S-->>C: result {roots}
+```
+
+### Progress and logs
+
+Two ways to tell the client what a running tool is doing. Both are sent on the response stream of the same call, and only if the client asks for them in the request:
+
+- **Progress:** the client sends a progress token. `ctx.Progress(done, total, message)` then sends how far you are. Without a token the call does nothing. `total` 0 leaves the total out.
+- **Logs:** the client sends a log level. `ctx.Log().Debug/Info/Warn/Error(msg, "key", value, ...)` sends a message to the client, but only if it is at or above that level (an unknown level is rejected). These are not your server's own log: use the `log` package for that, it goes to stderr.
+
+Both are best effort: nothing is sent if the client cannot take a stream, and nothing is sent when the call runs as a task.
+
+```go
+type AddManyIn struct {
+	Texts []string `json:"texts" desc:"Bodies of the notes to add"`
+}
+
+type AddManyOut struct {
+	Added int `json:"added"`
+}
+
+// @MCP.Tool("add_many_notes", description="Adds several notes and reports progress")
+func AddMany(ctx mcp.Context, in AddManyIn) (AddManyOut, error) {
+	ctx.Log().Info("adding notes", "count", len(in.Texts))
+	for i, text := range in.Texts {
+		if ctx.Err() != nil { return AddManyOut{Added: i}, ctx.Err() } // the client cancelled
+		// create note
+		ctx.Log().Debug("note created", "index", i)                    // only if the level is debug
+		ctx.Progress(float64(i+1), float64(len(in.Texts)), "added "+text)
+	}
+	ctx.Log().Info("done", "count", len(in.Texts))
+	return AddManyOut{Added: len(in.Texts)}, nil
+}
+```
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant S as Server
+    C->>S: tools/call add_many_notes {3 texts} + _meta {progressToken, logLevel: "info"}
+    S-->>C: notification: log "adding notes"
+    S-->>C: notification: progress 1 of 3
+    Note over S: debug log is below "info", not sent
+    S-->>C: notification: progress 2 of 3
+    S-->>C: notification: progress 3 of 3
+    S-->>C: notification: log "done"
+    S-->>C: result {added: 3}
+```
+
+Without `progressToken` and `logLevel` in `_meta`, the client gets only the result.
+
+### Long-running tasks
+
+A normal tool call keeps the request open until the handler is done, which is a problem for a tool that takes minutes. With `@MCP.Task` the server runs the handler in the background and answers at once with a task handle. The client then asks `tasks/get` from time to time until the task is `completed`, and the result is in that answer. Your handler code is the same as for a normal tool.
+
+```go
+type ExportOut struct {
+	Exported int `json:"exported"`
+}
+
+// @MCP.Tool("export_notes", description="Exports all notes, takes a while")
+// @MCP.Task(optional, ttl="10m", poll="2s")
+func Export(ctx mcp.Context, _ mcp.Empty) (ExportOut, error) {
+	exported := 0
+	for _, n := range allNotes() {
+		if ctx.Err() != nil { return ExportOut{}, ctx.Err() } // the client sent tasks/cancel
+		if err := upload(n); err != nil { return ExportOut{}, mcp.ToolError("upload failed") } // slow
+		exported++
+	}
+	return ExportOut{Exported: exported}, nil // this is the result of the finished task
+}
+```
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant S as Server
+    C->>S: tools/call export_notes
+    S-->>C: task handle {taskId, status: working, pollIntervalMs: 2000}
+    Note over S: handler keeps running in the background
+    C->>S: tasks/get {taskId}
+    S-->>C: {status: working}
+    Note over C: waits about 2s
+    C->>S: tasks/get {taskId}
+    S-->>C: {status: completed, result: {exported: 42}}
+```
+
+The settings of `@MCP.Task`:
+
+- **Mode:** `optional`: a client that supports tasks (extension `io.modelcontextprotocol/tasks`) gets the handle at once, any other client waits and gets the result directly. `required`: clients without the extension are rejected with `-32021`. `forbidden` is the default without `@MCP.Task`.
+- **`poll`:** how often the client should ask `tasks/get`.
+- **`ttl`:** how long the task and its result are kept after it ended. After that `tasks/get` fails.
+
+While a task runs:
+
+- **Cancel:** the client can send `tasks/cancel`. The context of the handler is cancelled, so check `ctx.Err()` in long loops.
+- **Asking the client:** if the handler asks for input (roots, a form, sampling), the task changes to `input_required` and the client answers with `tasks/update`. The handler is not rerun, see [Asking the user](#asking-the-user-forms).
+- **No progress or logs:** `ctx.Progress` and `ctx.Log()` send nothing, the client sees only the task state.
+- **Errors:** a `mcp.ToolError` still ends as `completed` (the result says it is an error). Only a protocol error makes the task `failed`.
+
+```mermaid
 stateDiagram-v2
     [*] --> working: tools/call returns a task handle
-    working --> input_required: Roots / Elicit / Sample
+    working --> input_required: Roots / Elicit / ElicitURL / Sample
     input_required --> working: tasks/update
     working --> completed: result (tool errors too)
     working --> failed: protocol error
@@ -569,11 +818,15 @@ stateDiagram-v2
 
 ### Static and templated resources
 
-Data the application reads, such as files or records. A fixed URI or an RFC 6570 template; `{id}` binds to a `uri:"id"` field. An exact URI wins over a template.
+Data the application reads, such as files or records. A fixed URI or a template with simple `{name}` variables (letters, digits, `_`; each matches one segment, no `/`, `?` or `#`; RFC 6570 operators such as `{+path}` or `{?q}` are not supported and fail at server start). `{id}` binds to a `uri:"id"` field. An exact URI wins over a template.
 
 ```go
+type NoteURI struct {
+	ID string `uri:"id"` // filled from {id} of the URI
+}
+
 // @MCP.Resource("note:///{id}", title="Note", mime="text/plain")
-func Read(ctx mcp.Context, u NoteURI) (mcp.Contents, error) {   // NoteURI{ID string `uri:"id"`}
+func Read(ctx mcp.Context, u NoteURI) (mcp.Contents, error) {
 	n, ok := notes[u.ID]
 	if !ok { return nil, mcp.ErrNotFound }                      // -32602 with data.uri
 	return mcp.Contents{mcp.TextContent(n.Text)}, nil
@@ -585,42 +838,71 @@ func Index(ctx mcp.Context) (mcp.Contents, error) { return mcp.JSONContents(ids(
 
 ```mermaid
 flowchart LR
-    RD["resources/read note:///7"] --> M{match}
-    M -->|exact URI first| S["static resource"]
-    M -->|else template| H["handler, id=7"]
+    RD["resources/read"] --> M{match}
+    M -->|"note:///index (exact URI first)"| S["static resource"]
+    M -->|"note:///7 (else template)"| H["template handler, id=7"]
 ```
 
 ### Listing resources
 
-Make concrete URIs discoverable through `resources/list`, paged with a cursor.
+Make concrete URIs discoverable through `resources/list`. The template must be declared with `@MCP.Resource` (as above). The function returns all concrete refs; the server merges them with the static resources and pages the result with `@MCP.PageSize`. The `PageReq` you get is always empty and a returned `Next` is ignored. Refs carry uri, name, title, description and mime type (the template's `mime=` is the fallback).
 
 ```go
 // @MCP.ResourceList("note:///{id}")
-func List(ctx mcp.Context, page mcp.PageReq) (mcp.Page[mcp.ResourceRef], error) {
-	return mcp.Paginate(refs(), page), nil
+func List(ctx mcp.Context, _ mcp.PageReq) (mcp.Page[mcp.ResourceRef], error) {
+	var refs []mcp.ResourceRef
+	for id := range notes {
+		refs = append(refs, mcp.ResourceRef{URI: "note:///" + id, Name: id})
+	}
+	return mcp.Page[mcp.ResourceRef]{Items: refs}, nil // all of them, the server pages
 }
 ```
 
 ### Change notifications
 
-There is no push channel. A client opens `subscriptions/listen` with what it cares about; the stream is acknowledged first and stays open. Mark a resource `@MCP.Subscribable` and call `ctx.ResourceUpdated(uri)` when it changes.
+A normal call has no way to push something later. A client that wants to hear about changes opens `subscriptions/listen` and keeps it open; the server sends the notifications on that stream. You send them from any handler:
+
+- `ctx.ResourceUpdated(uri)`: the content of a resource changed. The resource needs `@MCP.Subscribable`, and only clients subscribed to that exact URI get it.
+- `ctx.ResourcesChanged()`, `ctx.ToolsChanged()`, `ctx.PromptsChanged()`: the list changed, for clients that asked for list changes.
 
 ```go
-// @MCP.Resource("note:///{id}")
+// @MCP.Resource("note:///{id}", title="Note", mime="text/plain")
 // @MCP.Subscribable
-...
-ctx.ResourceUpdated("note:///" + id)   // subscribers of that URI
-ctx.ResourcesChanged()                 // list changed (also ToolsChanged, PromptsChanged)
+func Read(ctx mcp.Context, u NoteURI) (mcp.Contents, error) {
+	text := "..." // find the note text by u.ID
+	return mcp.Contents{mcp.TextContent(text)}, nil
+}
+
+// @MCP.Tool("edit_note", description="Edits a note")
+func Edit(ctx mcp.Context, in IDIn) (mcp.Empty, error) {
+	// edit the note
+	ctx.ResourceUpdated("note:///" + in.ID) // content changed: tells whoever subscribed to this URI
+	return mcp.Empty{}, nil
+}
+
+// @MCP.Tool("add_note", description="Adds a note")
+func Add(ctx mcp.Context, in AddIn) (mcp.Empty, error) {
+	// create the note
+	ctx.ResourcesChanged() // a new URI exists: tells whoever listens for list changes
+	return mcp.Empty{}, nil
+}
 ```
 
 ```mermaid
 sequenceDiagram
-    participant C as Client
+    participant A as Client A (listens)
     participant S as Server
-    C->>S: subscriptions/listen {resourceSubscriptions, resourcesListChanged}
-    S-->>C: acknowledged
-    Note over S: a tool calls ctx.ResourceUpdated(uri)
-    S-->>C: notifications/resources/updated
+    participant B as Client B
+    A->>S: subscriptions/listen {resourceSubscriptions: ["note:///7"], resourcesListChanged: true}
+    S-->>A: acknowledged (the stream stays open)
+    B->>S: tools/call edit_note {id: 7}
+    Note over S: handler calls ctx.ResourceUpdated("note:///7")
+    S-->>A: notifications/resources/updated {uri: note:///7}
+    S-->>B: result
+    B->>S: tools/call add_note
+    Note over S: handler calls ctx.ResourcesChanged()
+    S-->>A: notifications/resources/list_changed
+    S-->>B: result
 ```
 
 > `ctx.ResourceUpdated(uri)` reaches every listener subscribed to that exact URI (subject to the scopes of the resource). Per-user data needs per-user URIs that the resource handler authorizes via `ctx.Principal()`.
@@ -632,8 +914,13 @@ sequenceDiagram
 Conversation starters the user picks, like a slash command with arguments. A prompt returns messages, optionally with resources embedded.
 
 ```go
+type Args struct {
+	ID    string `json:"id"`
+	Style string `json:"style,omitempty"`
+}
+
 // @MCP.Prompt("summarize_notes", title="Summarize note")
-func SummarizeNotes(ctx mcp.Context, a Args) (mcp.Messages, error) {   // Args{ID string; Style string `json:",omitempty"`}
+func SummarizeNotes(ctx mcp.Context, a Args) (mcp.Messages, error) {
 	return mcp.Messages{
 		mcp.UserText("Summarize this note (" + a.Style + "):"),
 		mcp.User(mcp.EmbedResource("note:///" + a.ID)),
@@ -648,21 +935,22 @@ sequenceDiagram
     participant S as Server
     U->>C: picks /summarize_notes, fills arguments
     C->>S: prompts/get
-    S-->>C: messages [user, resource]
+    S-->>C: messages [text, embedded note:///id]
     C->>U: starts the chat with them
 ```
 
 ### Completion
 
-Autocomplete for a prompt argument or a resource template variable. Fixed values on the prompt, or a function for computed ones (`for` is the prompt name or the URI template).
+Autocomplete for a prompt argument or a resource template variable, while the user types. Two ways: a fixed list on the prompt (first example, `style`), or a function for computed values (second example, `id`; its `for=` is the prompt name or the URI template). Prompt argument names come from the `json` tag (else the field name), and `arg=` must match them exactly. At most 100 values are returned; more set `hasMore`.
+
+Fixed values go on the prompt as one more annotation. The prompt function itself is unchanged and still returns its messages; the completion is only the `@MCP.Complete` line, which lists the values for the argument `style`:
 
 ```go
-// @MCP.Complete(arg="style", values="short,bullets")      // on the prompt
-
-// @MCP.Complete(for="note:///{id}", arg="id")
-// @MCP.Complete(for="summarize_notes", arg="id")
-func CompleteID(ctx mcp.Context, partial string, resolved map[string]string) (mcp.Completion, error) {
-	return mcp.Values(idsWithPrefix(partial)...), nil
+// @MCP.Prompt("summarize_notes", title="Summarize note")
+// @MCP.Complete(arg="style", values="short,bullets")
+func SummarizeNotes(ctx mcp.Context, a Args) (mcp.Messages, error) {
+	// build the messages, see Prompts
+	return mcp.Messages{}, nil
 }
 ```
 
@@ -672,8 +960,35 @@ sequenceDiagram
     participant C as Client
     participant S as Server
     U->>C: types "sh" in style
-    C->>S: completion/complete {ref, argument, value}
+    C->>S: completion/complete {argument: style, value: "sh"}
+    Note over S: fixed values: keeps the ones starting with "sh"
     S-->>C: ["short"]
+```
+
+Computed values come from a separate function that returns the values (`mcp.Completion`), not messages. This one completes the `id` of the prompt and the `{id}` of the resource template:
+
+```go
+// @MCP.Complete(for="note:///{id}", arg="id")
+// @MCP.Complete(for="summarize_notes", arg="id")
+func CompleteID(ctx mcp.Context, partial string, resolved map[string]string) (mcp.Completion, error) {
+	var ids []string
+	for id := range notes {
+		if strings.HasPrefix(id, partial) { ids = append(ids, id) }
+	}
+	slices.Sort(ids)
+	return mcp.Completion{Values: ids}, nil
+}
+```
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant C as Client
+    participant S as Server
+    U->>C: types "no" in id
+    C->>S: completion/complete {argument: id, value: "no"}
+    Note over S: calls CompleteID with partial "no"
+    S-->>C: ["note-1", "note-2"]
 ```
 
 ## Runtime
@@ -695,18 +1010,18 @@ log.Fatal(http.ListenAndServe(":8080", mux))
 | Option | Effect |
 |---|---|
 | `WithInstructions(text)` | instructions of `server/discover` |
-| `WithAllowedOrigins(...)` | accepted `Origin` values (default: localhost) |
-| `WithKeepAlive(d)` | keep-alive of listen streams |
-| `WithPageSize(n)` | page size of list operations |
-| `WithBaseURL(url)` | base of relative icon sources |
-| `WithCache(ttl, scope)` | `ttlMs` and `cacheScope` hints |
-| `WithLimits(mcp.Limits{...})` | caps for tasks (`Tasks` 1000, `TasksPerCaller` 100, `TaskTTL` 1h, `TaskInputTimeout` 15m), listen streams (`Streams` 1000, `StreamsPerCaller` 20, `ListenEntries` 100 per request) and open URL elicitations (`Elicitations` 10000, `ElicitationsPerCaller` 100); zero keeps the default, over the cap the request fails with a "try again later" error |
-| `WithStateKey(key)` | secret for `requestState`; share it between instances (`GOMCP_STATE_KEY` in generated servers) |
+| `WithAllowedOrigins(...)` | accepted `Origin` values. Default: only localhost origins. Once set, only the listed ones pass (list localhost too). Requests without `Origin` always pass |
+| `WithKeepAlive(d)` | keep-alive of listen streams (default 20s) |
+| `WithPageSize(n)` | page size of tool, prompt, resource and template lists (default 0: everything at once) |
+| `WithBaseURL(url)` | base of relative icon sources (default: scheme and host of the request; relative icons are left out where there is none, as over stdio) |
+| `WithCache(ttl, scope)` | `ttlMs` and `cacheScope` hints on discover, list and read results (default: ttl 0, scope private) |
+| `WithLimits(mcp.Limits{...})` | caps for tasks (`Tasks` 1000, `TasksPerCaller` 100, `TaskTTL` 1h, `TaskInputTimeout` 15m), listen streams (`Streams` 1000, `StreamsPerCaller` 20, `ListenEntries` 100 per request) and open URL elicitations (`Elicitations` 10000, `ElicitationsPerCaller` 100); zero keeps the default, over the cap the request is rejected (`-32600` for tasks and streams, `-32602` for `ListenEntries`) |
+| `WithStateKey(key []byte)` | secret for `requestState`; without it a random key is made per process, so share it between instances (generated servers use `GOMCP_STATE_KEY`; empty means random) |
 | `WithAuth(schemes...)` | authentication schemes |
 
 ### Errors
 
-Tool errors are results with `isError: true`. Protocol errors are JSON-RPC errors: `-32602` invalid params (also resource not found), `-32603` internal, `-32020` header mismatch, `-32021` missing client capability, `-32022` unsupported protocol version.
+Tool errors are results with `isError: true`. Protocol errors are JSON-RPC errors: `-32600` invalid request (also exceeded limits and batching), `-32601` unknown method, `-32602` invalid params (also resource not found), `-32603` internal, `-32020` header mismatch, `-32021` missing client capability, `-32022` unsupported protocol version.
 
 ```go
 return out, mcp.ToolError("note not found")        // the model sees it

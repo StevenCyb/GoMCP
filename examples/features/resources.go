@@ -23,15 +23,16 @@ func Read(ctx mcp.Context, u NoteURI) (mcp.Contents, error) {
 	return mcp.Contents{mcp.TextContent(note.Text)}, nil
 }
 
-// Example: paginated listing of the concrete URIs of the template above.
+// Example: listing of the concrete URIs of the template above. Return all of
+// them; the server pages the merged list (see @MCP.PageSize).
 //
 // @MCP.ResourceList("note:///{id}")
-func List(ctx mcp.Context, page mcp.PageReq) (mcp.Page[mcp.ResourceRef], error) {
+func List(ctx mcp.Context, _ mcp.PageReq) (mcp.Page[mcp.ResourceRef], error) {
 	var refs []mcp.ResourceRef
 	for id := range notes {
 		refs = append(refs, mcp.ResourceRef{URI: "note:///" + id, Name: id})
 	}
-	return mcp.Paginate(refs, page), nil
+	return mcp.Page[mcp.ResourceRef]{Items: refs}, nil
 }
 
 // Example: static resource with a fixed URI; it wins over the template above
