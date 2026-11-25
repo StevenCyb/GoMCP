@@ -331,3 +331,20 @@ func TestStdioDoesNotSkipSetupAndTeardown(t *testing.T) {
 	assert.Less(t, setup, serve, "setup runs before either transport starts")
 	assert.Greater(t, teardown, serve, "teardown runs after either transport stopped")
 }
+
+func TestFeatureFlags(t *testing.T) {
+	p := base()
+	p.Tools = []project.Tool{
+		{Common: project.Common{Func: fn("Add"), Name: "add", Flag: "beta"}},
+		{Common: project.Common{Func: fn("Get"), Name: "get"}},
+	}
+	p.Prompts = []project.Prompt{{Common: project.Common{Func: fn("Review"), Name: "review", Flag: "beta"}}}
+	p.Completions = []project.Completion{{Prompt: "review", Arg: "lang", Values: []string{"go"}}}
+	src := gen(t, p)
+
+	assert.Contains(t, src, "if !disabled(\"beta\") {\n\t\tif err := mcp.AddTool(srv, mcp.ToolDef{Name: \"add\"}")
+	assert.NotContains(t, src, `disabled("get")`)
+	assert.Equal(t, 3, strings.Count(src, `if !disabled("beta")`), "tool, prompt and the completion of the prompt")
+	assert.Contains(t, src, "GOMCP_DISABLED_FEATURES")
+	assert.Contains(t, src, "--disabled-features")
+}
