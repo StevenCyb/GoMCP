@@ -470,3 +470,17 @@ func TestAllErrorsAreReportedTogether(t *testing.T) {
 	assert.Contains(t, msg, "a.go")
 	assert.Contains(t, msg, "b.go")
 }
+
+func TestFeatureFlag(t *testing.T) {
+	p := parse(t, map[string]string{"tools.go": header + `// @MCP.Tool("add")
+// @MCP.FeatureFlag("beta")
+func Add(ctx mcp.Context, in Empty) (Out, error) { return Out{}, nil }
+`})
+	require.Len(t, p.Tools, 1)
+	assert.Equal(t, "beta", p.Tools[0].Flag)
+
+	for _, bad := range []string{`@MCP.FeatureFlag`, `@MCP.FeatureFlag("a,b")`, `@MCP.FeatureFlag("a", "b")`} {
+		msg := parseErr(t, map[string]string{"tools.go": header + "// @MCP.Tool(\"add\")\n// " + bad + "\nfunc Add(ctx mcp.Context, in Empty) (Out, error) { return Out{}, nil }\n"})
+		assert.Contains(t, msg, "FeatureFlag", bad)
+	}
+}

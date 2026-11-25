@@ -472,6 +472,21 @@ flowchart LR
     B -->|valid| F["your handler"]
 ```
 
+### Feature flags
+
+`@MCP.FeatureFlag("name")` on a tool, resource or prompt makes it switchable. Everything is enabled by default. Switch flags off when the server starts, with `GOMCP_DISABLED_FEATURES=beta,other` or `--disabled-features=beta,other` (built binary; both are merged). A disabled feature is not registered at all: it is not listed and cannot be called. The completion and listing of a disabled prompt or template are skipped too.
+
+```go
+// @MCP.Tool("delete_note")
+// @MCP.FeatureFlag("destructive")
+func Delete(ctx mcp.Context, in IDIn) (mcp.Empty, error) { /* ... */ }
+```
+
+```sh
+GOMCP_DISABLED_FEATURES=destructive gomcp serve ./examples/features
+./bin/notes --disabled-features=destructive
+```
+
 ### Hints, metadata and requirements
 
 Hints tell clients what a tool does (`readOnly`, `destructive`, `idempotent`, `openWorld`). `@MCP.Requires` names client capabilities the tool needs (`sampling`, `roots`, `elicitation`, `elicitation="url"`). It is not shown in `tools/list`; it is checked only when the tool is called. If the client did not declare them, the call fails with `-32021` (HTTP 400) before the handler runs.

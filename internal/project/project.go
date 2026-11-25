@@ -136,6 +136,8 @@ type Common struct {
 	Meta        []KV
 	Scopes      []string
 	Use         []FuncRef
+	// Flag is the feature flag name; the feature is not registered if it is disabled at start.
+	Flag string
 }
 
 // Hint carries the tool annotations.

@@ -12,9 +12,9 @@ import (
 
 // featureModifiers maps each feature annotation to the modifier annotations it accepts.
 var featureModifiers = map[string]map[string]bool{ //nolint:gochecknoglobals // constant lookup table
-	"Tool":         set("Hint", "Task", "Requires", "AuthScopes", "Icon", "Meta", "Use"),
-	"Resource":     set("Subscribable", "Annotations", "AuthScopes", "Icon", "Meta", "Use"),
-	"Prompt":       set("Complete", "AuthScopes", "Icon", "Meta", "Use"),
+	"Tool":         set("Hint", "Task", "Requires", "AuthScopes", "Icon", "Meta", "Use", "FeatureFlag"),
+	"Resource":     set("Subscribable", "Annotations", "AuthScopes", "Icon", "Meta", "Use", "FeatureFlag"),
+	"Prompt":       set("Complete", "AuthScopes", "Icon", "Meta", "Use", "FeatureFlag"),
 	"ResourceList": set(),
 	"Middleware":   set(),
 	"Setup":        set(),
@@ -151,6 +151,12 @@ func (c *collector) common(feature located, a annotated, ref project.FuncRef, f 
 			}
 		case "Meta":
 			c.meta(ann, meta)
+		case "FeatureFlag":
+			if flag, ok := ann.Positional(); ok && len(ann.Positionals()) == 1 && flag != "" && !strings.ContainsAny(flag, ", \t") {
+				com.Flag = flag
+			} else {
+				c.errorf(ann.pos, "FeatureFlag needs a name without commas or spaces")
+			}
 		}
 	}
 	for _, k := range slices.Sorted(maps.Keys(meta)) {
