@@ -4,7 +4,7 @@ A todo list that survives restarts.
 
 - `Setup` loads the list from a JSON file, `Teardown` saves it when the server stops (end of input over stdio, Ctrl-C over HTTP).
 - Tools `add_todo`, `list_todos`, `complete_todo`.
-- Resource `todo:///open`: the open items.
+- Resource `todo:///open`: the open items. It is subscribable: adding or completing an item sends `notifications/resources/updated`.
 - Prompt `plan_my_day`: asks the model to order the open items.
 
 The file is `TODO_FILE` (default `./todo.json`). A missing file is an empty list, a broken file stops the start.

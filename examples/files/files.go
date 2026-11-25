@@ -60,9 +60,11 @@ type FileURI struct {
 	Path string `uri:"path"`
 }
 
-// Example: resource template for text files, e.g. file:///docs/readme.txt.
+// Example: resource template for text files directly in the root, e.g.
+// file:///readme.txt. A variable matches one path segment, so files in
+// subdirectories are not reachable through it.
 //
-// @MCP.Resource("file:///{path}", title="File", mime="text/plain", description="Reads a text file below the root")
+// @MCP.Resource("file:///{path}", title="File", mime="text/plain", description="Reads a text file in the root")
 func Read(ctx mcp.Context, u FileURI) (mcp.Contents, error) {
 	p, err := resolve(root, u.Path)
 	if err != nil {

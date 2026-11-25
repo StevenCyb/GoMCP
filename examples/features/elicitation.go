@@ -10,9 +10,8 @@ import (
 	"github.com/StevenCyb/GoMCP/pkg/mcp"
 )
 
-// Example: schema of the form shown to the user.
-//
-// @MCP.Elicitation
+// Example: schema of the form shown to the user. Any flat struct works;
+// mcp.Elicit builds the form from it by reflection.
 type ConfirmDelete struct {
 	Confirm bool `json:"confirm" desc:"Really delete this note?" default:"false"`
 }
@@ -26,7 +25,7 @@ type ConfirmDelete struct {
 func Delete(ctx mcp.Context, in IDIn) (mcp.Empty, error) {
 	ans, action, err := mcp.Elicit[ConfirmDelete](ctx, "Delete "+in.ID+"?")
 	if err != nil {
-		return mcp.Empty{}, err // e.g. client lacks elicitation
+		return mcp.Empty{}, err // returns ErrInputRequired on the first run: return it as is
 	}
 	if action != mcp.Accept || !ans.Confirm {
 		return mcp.Empty{}, mcp.ToolError("not confirmed")
@@ -38,8 +37,6 @@ func Delete(ctx mcp.Context, in IDIn) (mcp.Empty, error) {
 
 // Example: generic follow-up question with several field types (form
 // elicitation): enum, number with bounds, optional text, bool.
-//
-// @MCP.Elicitation
 type NoteDetails struct {
 	Tag      string `json:"tag"               desc:"Category"            enum:"work,private,idea"`
 	Priority int    `json:"priority"          desc:"Priority"            min:"1" max:"5" default:"3"`
@@ -64,7 +61,7 @@ func Detail(ctx mcp.Context, in IDIn) (Note, error) {
 	if action != mcp.Accept { // declined or cancelled: keep as is
 		return note, nil
 	}
-	note.Tag = d.Tag
+	note.Tag, note.Priority, note.Comment, note.Notify = d.Tag, d.Priority, d.Comment, d.Notify
 	notes[note.ID] = note
 	return note, nil
 }
@@ -74,9 +71,10 @@ func Detail(ctx mcp.Context, in IDIn) (Note, error) {
 // @MCP.Tool("connect_account", description="Links an external account via browser")
 // @MCP.Requires(elicitation="url")
 func Connect(ctx mcp.Context, _ mcp.Empty) (mcp.Empty, error) {
-	// {id} is replaced by the elicitation id; the sign-in page's backend calls
-	// mcp.CompleteElicitation(id) when the user is done.
-	id, err := ctx.ElicitURL("Sign in to continue", "https://example.com/connect?e={id}")
+	// {id} is replaced by the elicitation id. When the user is done, the backend
+	// of the sign-in page tells an endpoint in this process (your own code, not
+	// provided by gomcp), which calls mcp.CompleteElicitation(id).
+	id, err := ctx.ElicitURL("Sign in to continue", "https://login.example.local/connect?e={id}")
 	if err != nil {
 		return mcp.Empty{}, err
 	}

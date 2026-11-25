@@ -94,7 +94,7 @@ func TestParseExampleDirectory(t *testing.T) {
 	for _, tool := range p.Tools {
 		names[tool.Name] = tool
 	}
-	assert.Len(t, names, 7)
+	assert.Len(t, names, 9)
 	add := names["add_note"]
 	assert.Equal(t, "Add", add.Func.Name)
 	assert.Equal(t, "Add note", add.Title)
@@ -107,7 +107,8 @@ func TestParseExampleDirectory(t *testing.T) {
 	assert.True(t, names["delete_note"].Hint.Destructive)
 	assert.Equal(t, []string{"elicitation"}, names["delete_note"].Requires)
 	assert.Equal(t, []string{"elicitation:url"}, names["connect_account"].Requires)
-	assert.Equal(t, []string{"sampling"}, names["summarize_all"].Requires)
+	assert.Equal(t, []string{"sampling"}, names["suggest_tag"].Requires)
+	assert.Equal(t, []string{"roots"}, names["list_roots"].Requires)
 	assert.Equal(t, []string{"roots"}, names["import_notes"].Requires)
 	assert.Equal(t, project.Task{Mode: "optional", TTL: "10m", Poll: "2s"}, names["import_notes"].Task)
 

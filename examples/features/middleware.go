@@ -9,7 +9,9 @@ import (
 	"github.com/StevenCyb/GoMCP/pkg/mcp"
 )
 
-// Example: middleware shared by tools, resources, prompts and completion.
+// Example: middleware shared by tools, resources, prompts and completion. It
+// is attached with @MCP.Use (see server_transport.go); @MCP.Middleware only
+// makes the parser check the signature.
 //
 // @MCP.Middleware
 func Logging(ctx mcp.Context, req mcp.Request, next mcp.Handler) (any, error) {

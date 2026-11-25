@@ -6,7 +6,8 @@ package api
 import "github.com/StevenCyb/GoMCP/pkg/mcp"
 
 // Example: long-running task that reads the client's roots, reports progress
-// and handles cancellation.
+// and handles cancellation. Progress reaches the client only when the call
+// runs directly; when the client runs it as a task, the call has no effect.
 //
 // @MCP.Tool("import_notes", description="Imports one note per client root")
 // @MCP.Task(optional, ttl="10m", poll="2s")

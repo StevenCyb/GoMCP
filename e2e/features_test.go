@@ -157,7 +157,7 @@ func TestFeatures(t *testing.T) {
 			tool, _ := item.(obj)
 			byName[tool[keyName].(string)] = tool
 		}
-		for _, name := range []string{"add_note", "get_note", "delete_note", "detail_note", "connect_account", "summarize_all", toolImport} {
+		for _, name := range []string{"add_note", "get_note", "delete_note", "detail_note", "connect_account", "suggest_tag", "list_roots", toolImport} {
 			assert.Contains(t, byName, name)
 		}
 		assert.Equal(t, obj{"destructiveHint": true}, byName["delete_note"]["annotations"])
@@ -348,7 +348,7 @@ func TestFeatures(t *testing.T) {
 		// URL elicitation: declined means no wait; the page backend of the example is not part of this process
 		c.answer = func(method string, params obj) obj {
 			assert.Equal(t, "url", params["mode"])
-			assert.True(t, strings.HasPrefix(params[keyURL].(string), "https://example.com/connect?e="))
+			assert.True(t, strings.HasPrefix(params[keyURL].(string), "https://login.example.local/connect?e="))
 			return obj{keyAction: "decline"}
 		}
 		assert.True(t, isError(c.tool("connect_account", obj{})))
@@ -356,7 +356,7 @@ func TestFeatures(t *testing.T) {
 		// without the capability the request fails before the tool runs
 		plain := c.with(bearer, obj{})
 		plain.t = t
-		for _, tool := range []string{"delete_note", "detail_note", "connect_account", "summarize_all", toolImport} {
+		for _, tool := range []string{"delete_note", "detail_note", "connect_account", "suggest_tag", "list_roots", toolImport} {
 			rpcErr := plain.toolErr(tool, obj{"id": noteID})
 			assert.InDelta(t, -32021, rpcErr["code"], 0, tool)
 			assert.NotNil(t, rpcErr["data"], tool)
@@ -366,17 +366,34 @@ func TestFeatures(t *testing.T) {
 	t.Run("sampling", func(t *testing.T) {
 		c := c.with(bearer, obj{capSamples: obj{}})
 		c.t = t
+		noteID := structured(t, c.tool("add_note", obj{keyText: "ship the release notes"}))["id"].(string)
 		var asked obj
+		reply := "Work"
 		c.answer = func(method string, params obj) obj {
 			assert.Equal(t, "sampling/createMessage", method)
 			asked = params
-			return obj{"role": "assistant", keyContent: obj{"type": keyText, keyText: "two notes"}, "model": "test-model", "stopReason": "endTurn"}
+			return obj{"role": "assistant", keyContent: obj{"type": keyText, keyText: reply}, "model": "test-model", "stopReason": "endTurn"}
 		}
-		res := c.tool("summarize_all", obj{})
+		res := c.tool("suggest_tag", obj{"id": noteID})
 		assert.False(t, isError(res), "%v", res)
-		assert.Contains(t, text(t, res), "two notes")
+		assert.Equal(t, "work", structured(t, res)["tag"], "the model's answer is checked and stored")
 		assert.NotEmpty(t, asked["messages"])
 		assert.NotZero(t, asked["maxTokens"])
+
+		reply = "banana"
+		assert.True(t, isError(c.tool("suggest_tag", obj{"id": noteID})), "an answer that is not a tag is refused")
+	})
+
+	t.Run("roots", func(t *testing.T) {
+		c := c.with(bearer, obj{capRoots: obj{}})
+		c.t = t
+		c.answer = func(method string, params obj) obj {
+			assert.Equal(t, "roots/list", method)
+			return obj{"roots": []any{obj{keyURI: rootA}, obj{keyURI: rootB}}}
+		}
+		res := c.tool("list_roots", obj{})
+		assert.False(t, isError(res), "%v", res)
+		assert.Equal(t, []any{rootA, rootB}, structured(t, res)["roots"])
 	})
 
 	t.Run("roots and progress", func(t *testing.T) {
@@ -386,7 +403,7 @@ func TestFeatures(t *testing.T) {
 		c.answer = func(method string, params obj) obj {
 			asked++
 			assert.Equal(t, "roots/list", method)
-			return obj{"roots": []any{obj{keyURI: "file:///work/a"}, obj{keyURI: "file:///work/b"}}}
+			return obj{"roots": []any{obj{keyURI: rootA}, obj{keyURI: rootB}}}
 		}
 		res, rpcErr := c.call("tools/call", obj{keyName: toolImport, keyArguments: obj{}, keyMeta: obj{"progressToken": "tok"}})
 		require.Nil(t, rpcErr)
@@ -394,6 +411,40 @@ func TestFeatures(t *testing.T) {
 		assert.False(t, isError(res), "%v", res)
 		assert.Equal(t, 1, asked, "one round trip for the roots")
 		assert.Len(t, notesOf(c.notes, "notifications/progress"), 2, "one progress per root")
+	})
+
+	t.Run("progress and logs", func(t *testing.T) {
+		c := c.with(bearer, obj{})
+		c.t = t
+		args := obj{"texts": []any{"one", "two", "three"}}
+		const logLevel = "io.modelcontextprotocol/logLevel"
+
+		// the client asked for progress and for logs from info up
+		res, rpcErr := c.call("tools/call", obj{keyName: "add_many_notes", keyArguments: args, keyMeta: obj{"progressToken": "tok", logLevel: "info"}})
+		require.Nil(t, rpcErr)
+		c.used.tools["add_many_notes"] = true
+		assert.False(t, isError(res), "%v", res)
+		assert.InDelta(t, 3, structured(t, res)["added"], 0)
+		progress := notesOf(c.notes, "notifications/progress")
+		require.Len(t, progress, 3, "one progress per note")
+		for i, n := range progress {
+			params, _ := n[keyParams].(obj)
+			assert.InDelta(t, i+1, params["progress"], 0)
+			assert.InDelta(t, 3, params["total"], 0)
+		}
+		logs := notesOf(c.notes, "notifications/message")
+		require.Len(t, logs, 2, "the debug log is below the level of the request")
+		for _, n := range logs {
+			params, _ := n[keyParams].(obj)
+			assert.Equal(t, "info", params["level"])
+		}
+
+		// the client asked for nothing: nothing is sent
+		c.notes = nil
+		_, rpcErr = c.call("tools/call", obj{keyName: "add_many_notes", keyArguments: args})
+		require.Nil(t, rpcErr)
+		assert.Empty(t, notesOf(c.notes, "notifications/progress"))
+		assert.Empty(t, notesOf(c.notes, "notifications/message"))
 	})
 
 	t.Run("tasks", func(t *testing.T) {
@@ -422,7 +473,7 @@ func TestFeatures(t *testing.T) {
 			key = k
 			assert.Equal(t, "roots/list", item.(obj)[keyMethod])
 		}
-		_, err := c.call("tasks/update", obj{keyTaskID: id, "inputResponses": obj{key: obj{"roots": []any{obj{keyURI: "file:///work/a"}}}}})
+		_, err := c.call("tasks/update", obj{keyTaskID: id, "inputResponses": obj{key: obj{"roots": []any{obj{keyURI: rootA}}}}})
 		require.Nil(t, err)
 
 		var done obj

@@ -99,7 +99,7 @@ func Add(ctx mcp.Context, in AddIn) (Item, error) {
 	defer mu.Unlock()
 	it := Item{ID: len(items) + 1, Text: in.Text}
 	items = append(items, it)
-	ctx.ResourcesChanged()
+	ctx.ResourceUpdated("todo:///open")
 	return it, nil
 }
 
@@ -118,7 +118,7 @@ func Complete(ctx mcp.Context, in IDIn) (Item, error) {
 	for i := range items {
 		if items[i].ID == in.ID {
 			items[i].Done = true
-			ctx.ResourcesChanged()
+			ctx.ResourceUpdated("todo:///open")
 			return items[i], nil
 		}
 	}
@@ -126,6 +126,7 @@ func Complete(ctx mcp.Context, in IDIn) (Item, error) {
 }
 
 // @MCP.Resource("todo:///open", mime="application/json", description="The open items")
+// @MCP.Subscribable
 func Open(ctx mcp.Context) (mcp.Contents, error) {
 	mu.Lock()
 	defer mu.Unlock()
