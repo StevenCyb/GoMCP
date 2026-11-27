@@ -206,6 +206,14 @@ flowchart LR
 gomcp serve ./examples/features --addr 127.0.0.1:8765 --dotenv ./dev.env
 ```
 
+Deployment values for a built server, also read from `--dotenv`. They win over the annotations, which only give defaults:
+
+| Variable | Overrides |
+| --- | --- |
+| `GOMCP_AUTH_RESOURCE` | `resource=` of `@MCP.Auth(type="oauth")`; the server does not start when neither is set |
+| `GOMCP_AUTH_SERVERS` | `@MCP.AuthServer`, comma-separated |
+| `GOMCP_BASE_URL` | `baseURL=` of `@MCP.Server` |
+
 ## Transports
 
 ### Local or remote
@@ -404,7 +412,7 @@ func VerifyAPIKey(ctx context.Context, token string) (mcp.Principal, error) {
 
 ### OAuth resource server
 
-gomcp verifies tokens, it never issues them. Authentication belongs to HTTP: over stdio it is ignored ([Local or remote](#local-or-remote)). It serves the protected resource metadata, challenges unauthenticated calls and checks scopes. Needs `resource=`. `@MCP.AuthServer` and `@MCP.AuthScope` declare the issuer and scopes for the metadata and the challenge (default scopes go into the `401` challenge).
+gomcp verifies tokens, it never issues them. Authentication belongs to HTTP: over stdio it is ignored ([Local or remote](#local-or-remote)). It serves the protected resource metadata, challenges unauthenticated calls and checks scopes. Needs the resource URL: `resource=` or `GOMCP_AUTH_RESOURCE` (see [Flags and environment](#flags-and-environment)). `@MCP.AuthServer` and `@MCP.AuthScope` declare the issuer and scopes for the metadata and the challenge (default scopes go into the `401` challenge).
 
 ```go
 // @MCP.Auth(type="oauth", resource="https://notes.example.com/mcp")

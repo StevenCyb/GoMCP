@@ -137,6 +137,12 @@ func (g *gen) run(sb *strings.Builder) {
 	p := g.p
 	sb.WriteString("func main() {\n\tif err := run(); err != nil {\n\t\tlog.Fatal(err)\n\t}\n}\n\n")
 	sb.WriteString("func run() error {\n")
+	for _, a := range p.Auth {
+		if a.Type == "oauth" {
+			fmt.Fprintf(sb, "\tif !useStdio() && envOr(\"GOMCP_AUTH_RESOURCE\", %s) == \"\" {\n\t\treturn fmt.Errorf(\"oauth needs GOMCP_AUTH_RESOURCE (the public URL of this server)\")\n\t}\n", q(a.Resource))
+			break
+		}
+	}
 	sb.WriteString("\tsrv := mcp.NewServer(" + g.info())
 	for _, opt := range g.options() {
 		sb.WriteString(",\n\t\t" + opt)
@@ -201,9 +207,7 @@ func (g *gen) options() []string {
 	if p.Server.Instructions != "" {
 		opts = append(opts, "mcp.WithInstructions("+q(p.Server.Instructions)+")")
 	}
-	if p.Server.BaseURL != "" {
-		opts = append(opts, "mcp.WithBaseURL("+q(p.Server.BaseURL)+")")
-	}
+	opts = append(opts, `mcp.WithBaseURL(envOr("GOMCP_BASE_URL", `+q(p.Server.BaseURL)+`))`)
 	if len(t.AllowedOrigins) > 0 {
 		opts = append(opts, "mcp.WithAllowedOrigins("+quoteAll(t.AllowedOrigins)+")")
 	}
@@ -237,11 +241,10 @@ func (g *gen) authScheme(a project.Auth) string {
 		typ = "mcp.AuthOAuth"
 	}
 	fields := []string{"Type: " + typ, "Verify: " + g.ref(a.Verify)}
-	if a.Resource != "" {
-		fields = append(fields, "Resource: "+q(a.Resource))
-	}
-	if len(a.AuthorizationServers) > 0 {
-		fields = append(fields, "AuthorizationServers: []string{"+quoteAll(a.AuthorizationServers)+"}")
+	if a.Type == "oauth" { // deployment values win over the annotation
+		fields = append(fields,
+			"Resource: envOr(\"GOMCP_AUTH_RESOURCE\", "+q(a.Resource)+")",
+			"AuthorizationServers: envList(\"GOMCP_AUTH_SERVERS\", []string{"+quoteAll(a.AuthorizationServers)+"})")
 	}
 	if len(a.Scopes) > 0 {
 		defs := make([]string, len(a.Scopes))
@@ -468,6 +471,29 @@ func (g *gen) helpers(sb *strings.Builder) {
 }
 
 func ptrTo[T any](v T) *T { return &v }
+
+// envOr returns the environment variable key, or def when it is unset or empty.
+func envOr(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return def
+}
+
+// envList is envOr for a comma-separated list.
+func envList(key string, def []string) []string {
+	v := os.Getenv(key)
+	if v == "" {
+		return def
+	}
+	var out []string
+	for _, s := range strings.Split(v, ",") {
+		if s = strings.TrimSpace(s); s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
+}
 
 // disabled reports whether a feature flag is switched off with --disabled-features=a,b
 // or GOMCP_DISABLED_FEATURES=a,b. Everything is enabled by default.

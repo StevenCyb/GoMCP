@@ -80,7 +80,7 @@ func TestServerInfoAndOptions(t *testing.T) {
 	assert.Contains(t, src, "mcp.WithPageSize(25)")
 	assert.Contains(t, src, `mcp.WithCache(mustDuration("5m"), mcp.CachePrivate)`)
 	assert.Contains(t, src, `mcp.WithStateKey([]byte(os.Getenv("GOMCP_STATE_KEY")))`)
-	assert.Contains(t, src, `mcp.WithBaseURL("https://base")`)
+	assert.Contains(t, src, `mcp.WithBaseURL(envOr("GOMCP_BASE_URL", "https://base"))`)
 	assert.Contains(t, src, `srv.Mount(mux, "/rpc")`)
 }
 
@@ -193,8 +193,9 @@ func TestAuthRegistration(t *testing.T) {
 	assert.Contains(t, src, "mcp.WithAuth(")
 	assert.Contains(t, src, "Type: mcp.AuthOAuth")
 	assert.Contains(t, src, "Verify: api.VerifyToken")
-	assert.Contains(t, src, `Resource: "https://r"`)
-	assert.Contains(t, src, `AuthorizationServers: []string{"https://as"}`)
+	assert.Contains(t, src, `Resource: envOr("GOMCP_AUTH_RESOURCE", "https://r")`)
+	assert.Contains(t, src, `AuthorizationServers: envList("GOMCP_AUTH_SERVERS", []string{"https://as"})`)
+	assert.Contains(t, src, `if !useStdio() && envOr("GOMCP_AUTH_RESOURCE", "https://r") == ""`)
 	assert.Contains(t, src, `Scopes: []mcp.ScopeDef{{Name: "read", Default: true}, {Name: "write"}}`)
 	assert.Contains(t, src, "Type: mcp.AuthBearer")
 	assert.Contains(t, src, "Verify: api.VerifyAPIKey")
