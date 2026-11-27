@@ -188,12 +188,50 @@ gomcp build ./examples/features ./bin/notes   # one binary, contains both transp
 gomcp serve ./examples/features               # build + run over HTTP, Ctrl-C stops gracefully
 gomcp watch ./examples/features               # rebuild on change (HTTP only)
 gomcp stdio ./examples/features               # build + run over stdin and stdout
-gomcp call ./examples/features                # list the tools
-gomcp call ./examples/features add_note '{"text":"hi"}'   # call a tool, print the result
+gomcp client list ./examples/todo             # list the tools
+gomcp client call ./examples/todo add_todo '{"text":"milk"}'   # call a tool, print the result
+gomcp client interactive ./examples/todo      # terminal UI
 gomcp version
 ```
 
-`call` tries a project without an AI client: it builds the project, starts it over stdio, lists the tools or calls one and stops the server. Text results go to stdout, build logs and errors to stderr. Arguments are a JSON object (`-` reads it from stdin), `--json` prints the raw result, and the exit code is 1 when the tool returns an error or the server a protocol error. Tools that ask the client for input (forms, sampling) are reported, not answered; `--root <dir>` answers `roots/list`.
+### client
+
+`client` is a small MCP client for the terminal, to try a server without an AI client. The target is either a project directory (built and run over stdio, like `gomcp stdio`) or the URL of a remote server (Streamable HTTP).
+
+```sh
+gomcp client list ./examples/todo                              # the tools and their arguments
+gomcp client call ./examples/todo add_todo '{"text":"milk"}'   # call a tool
+gomcp client call ./examples/todo list_todos --json            # the raw result
+echo '{"text":"tea"}' | gomcp client call ./examples/todo add_todo -   # arguments from stdin
+gomcp client interactive ./examples/todo                       # terminal UI
+
+gomcp client list https://example.com/mcp --token "$TOKEN"     # bearer token (or $GOMCP_TOKEN)
+gomcp client call https://example.com/mcp whoami --oauth       # log in with the browser
+```
+
+`list` and `call` print text results to stdout, build logs and errors to stderr. Arguments are a JSON object (`-` reads it from stdin), `--json` prints the raw result, and the exit code is 1 when the tool returns an error or the server a protocol error. Flags may stand anywhere.
+
+| Flag | Meaning |
+|------|---------|
+| `--json` | Print the raw result as indented JSON. |
+| `--token <bearer>` | Send a bearer token; `$GOMCP_TOKEN` is used when the flag is missing. Remote servers only. |
+| `--oauth` | Log in with the browser when the server asks for credentials. Remote servers only. |
+| `--client-id <id>` | OAuth client to use. Without it the client registers itself (dynamic client registration). |
+| `--scope <scopes>` | OAuth scopes. Without it the scopes the server names are used. |
+| `--callback-port <port>` | Port of the login redirect `http://localhost:<port>/callback`, for authorization servers with a registered redirect URI (Entra). Default: a free port. |
+| `--root <dir>` | Directory answered to `roots/list`, may be repeated. |
+| `--tags <tags>`, `--dotenv <file>` | Build tags and `.env` file of a project. |
+
+Tools that ask the client for input (forms, sampling) are reported by `call`, not answered.
+
+**OAuth.** With `--oauth` the client waits for a `401`, reads the OAuth metadata the server publishes (`resource_metadata` of the challenge, `/.well-known/oauth-protected-resource`) and the metadata of its authorization server, then runs authorization code with PKCE. It opens the browser, listens on `localhost` for the redirect and prints the login URL to stderr for machines without a browser. A `403 insufficient_scope` starts a new login with the missing scopes. Tokens are cached per server URL in `gomcp/tokens.json` in your user config directory (file mode `0600`) and refreshed when they expire, so the next call does not open the browser. If the authorization server cannot register clients (Microsoft Entra, for example) register `http://localhost:<port>/callback` as a redirect URI of a public client and pass `--client-id` and `--callback-port`.
+
+**Interactive.** `interactive` opens a terminal UI on the same target:
+
+- The list shows the tools; type `/` to filter, `enter` opens one.
+- The form has one field per argument of the input schema (`*` marks required ones): text for strings, numbers and JSON, `←`/`→` for booleans and enums. Defaults are preselected. `tab` and `↓` move on, `enter` on the last field (or `ctrl+r` anywhere) runs the tool.
+- The result is scrollable; `j` switches between text and raw JSON, `esc` goes back to the form (values kept), another `esc` to the list.
+- `r` in the list loads the tool list again, for example after `gomcp watch` rebuilt the server. `a` logs in again (with `--oauth`). `q` quits.
 
 ```mermaid
 flowchart LR

@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/StevenCyb/GoMCP/internal/caller"
-	"github.com/StevenCyb/GoMCP/internal/runner"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -20,9 +19,9 @@ func TestCall(t *testing.T) {
 	if testing.Short() {
 		t.Skip("builds and runs the example")
 	}
-	run := func(req caller.Request) (string, error) {
+	run := func(req caller.Request, roots ...string) (string, error) {
 		var out bytes.Buffer
-		err := caller.Run(t.Context(), runner.Options{Dir: "../examples/features", Stderr: io.Discard}, req, &out)
+		err := caller.Run(t.Context(), caller.Config{Target: "../examples/features", Roots: roots, Stderr: io.Discard}, req, &out)
 		return out.String(), err
 	}
 
@@ -59,7 +58,7 @@ func TestCall(t *testing.T) {
 		require.ErrorAs(t, err, &inputErr)
 		assert.Contains(t, err.Error(), "--root")
 
-		done, err := run(caller.Request{Tool: toolImport, Roots: []string{t.TempDir()}})
+		done, err := run(caller.Request{Tool: toolImport}, t.TempDir())
 		require.NoError(t, err, "roots are answered with --root")
 		assert.Contains(t, done, "1")
 	})
