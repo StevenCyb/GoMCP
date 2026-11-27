@@ -1,6 +1,6 @@
 module github.com/StevenCyb/example_esm
 
-go 1.27.4
+go 1.26.2
 
 require (
 	github.com/StevenCyb/GoMCP v0.0.0
