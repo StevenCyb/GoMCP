@@ -17,8 +17,8 @@ import (
 //
 // @MCP.Auth(type="oauth", resource="https://notes.example.com/mcp")
 // @MCP.AuthServer("https://auth.example.com")
-// @MCP.AuthScope("notes:read", description="Read notes", default)
-// @MCP.AuthScope("notes:write", description="Create and delete notes")
+// @MCP.AuthScope("notes:read", default)
+// @MCP.AuthScope("notes:write")
 func VerifyToken(ctx context.Context, token string) (mcp.Principal, error) {
 	if token == "" {
 		return mcp.Principal{}, errors.New("empty token")

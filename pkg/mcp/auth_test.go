@@ -40,8 +40,8 @@ func oauthScheme() mcp.AuthScheme {
 		Resource:             resourceID,
 		AuthorizationServers: []string{"https://auth.example.com"},
 		Scopes: []mcp.ScopeDef{
-			{Name: scopeRead, Description: "Read notes", Default: true},
-			{Name: scopeWrite, Description: "Write notes"},
+			{Name: scopeRead, Default: true},
+			{Name: scopeWrite},
 		},
 	}
 }
@@ -283,7 +283,10 @@ func TestListeningOnlyAcknowledgesResourcesTheCallerMayRead(t *testing.T) {
 }
 
 func TestScopeGroupsAreOrWithinAndAcrossLines(t *testing.T) {
-	const scopeOps = "notes:ops"
+	const (
+		scopeOps = "notes:ops"
+		gated    = "gated"
+	)
 	tokens["ops"] = mcp.Principal{Subject: "carol", Scopes: []string{scopeOps}}
 	tokens["both"] = mcp.Principal{Subject: "dave", Scopes: []string{scopeRead, scopeOps}}
 	t.Cleanup(func() { delete(tokens, "ops"); delete(tokens, "both") })
@@ -293,7 +296,7 @@ func TestScopeGroupsAreOrWithinAndAcrossLines(t *testing.T) {
 	// (write OR ops)
 	require.NoError(t, mcp.AddTool(s, mcp.ToolDef{Name: "either", Scopes: [][]string{{scopeWrite, scopeOps}}}, handler))
 	// (read) AND (write OR ops)
-	require.NoError(t, mcp.AddTool(s, mcp.ToolDef{Name: "gated", Scopes: [][]string{{scopeRead}, {scopeWrite, scopeOps}}}, handler))
+	require.NoError(t, mcp.AddTool(s, mcp.ToolDef{Name: gated, Scopes: [][]string{{scopeRead}, {scopeWrite, scopeOps}}}, handler))
 	srv := newServer(t, s)
 
 	cases := []struct {
@@ -304,10 +307,10 @@ func TestScopeGroupsAreOrWithinAndAcrossLines(t *testing.T) {
 		{"either", "writer", http.StatusOK, ""},
 		{"either", "ops", http.StatusOK, ""},
 		{"either", "reader", http.StatusForbidden, scopeWrite},
-		{"gated", "both", http.StatusOK, ""},
-		{"gated", "writer", http.StatusOK, ""},
-		{"gated", "ops", http.StatusForbidden, scopeRead},
-		{"gated", "reader", http.StatusForbidden, scopeWrite},
+		{gated, "both", http.StatusOK, ""},
+		{gated, "writer", http.StatusOK, ""},
+		{gated, "ops", http.StatusForbidden, scopeRead},
+		{gated, "reader", http.StatusForbidden, scopeWrite},
 	}
 	for _, tc := range cases {
 		t.Run(tc.tool+"/"+tc.token, func(t *testing.T) {

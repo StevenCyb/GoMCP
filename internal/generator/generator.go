@@ -247,9 +247,6 @@ func (g *gen) authScheme(a project.Auth) string {
 		defs := make([]string, len(a.Scopes))
 		for i, s := range a.Scopes {
 			parts := []string{"Name: " + q(s.Name)}
-			if s.Description != "" {
-				parts = append(parts, "Description: "+q(s.Description))
-			}
 			if s.Default {
 				parts = append(parts, "Default: true")
 			}

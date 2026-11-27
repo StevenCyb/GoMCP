@@ -409,7 +409,7 @@ gomcp verifies tokens, it never issues them. Authentication belongs to HTTP: ove
 ```go
 // @MCP.Auth(type="oauth", resource="https://notes.example.com/mcp")
 // @MCP.AuthServer("https://auth.example.com")
-// @MCP.AuthScope("notes:read", description="Read notes", default)
+// @MCP.AuthScope("notes:read", default)
 func VerifyToken(ctx context.Context, token string) (mcp.Principal, error) {
 	claims, err := parseJWT(token) // your JWT library: check signature, issuer, audience and expiry
 	if err != nil { return mcp.Principal{}, err }

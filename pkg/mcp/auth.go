@@ -28,8 +28,7 @@ type Verifier func(ctx context.Context, token string) (Principal, error)
 
 // ScopeDef declares a scope of an OAuth scheme.
 type ScopeDef struct {
-	Name        string
-	Description string
+	Name string
 	// Default scopes are requested in the WWW-Authenticate challenge.
 	Default bool
 }

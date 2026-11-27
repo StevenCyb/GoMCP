@@ -80,8 +80,8 @@ func TestParseExampleDirectory(t *testing.T) {
 	assert.Equal(t, "https://notes.example.com/mcp", p.Auth[0].Resource)
 	assert.Equal(t, []string{"https://auth.example.com"}, p.Auth[0].AuthorizationServers)
 	assert.Equal(t, []project.ScopeDef{
-		{Name: "notes:read", Description: "Read notes", Default: true},
-		{Name: "notes:write", Description: "Create and delete notes"},
+		{Name: "notes:read", Default: true},
+		{Name: "notes:write"},
 	}, p.Auth[0].Scopes)
 	assert.Equal(t, "bearer", p.Auth[1].Type)
 	assert.Equal(t, "VerifyAPIKey", p.Auth[1].Verify.Name)
@@ -335,7 +335,7 @@ func TestAuthAnnotations(t *testing.T) {
 	p := parse(t, map[string]string{"auth.go": header + `// @MCP.Auth(type="oauth", resource="https://r")
 // @MCP.AuthServer("https://as1")
 // @MCP.AuthServer("https://as2")
-// @MCP.AuthScope("read", description="Read", default)
+// @MCP.AuthScope("read", default)
 // @MCP.AuthScope("write")
 func Verify(ctx context.Context, token string) (mcp.Principal, error) { return mcp.Principal{}, nil }
 
@@ -344,7 +344,7 @@ func VerifyKey(ctx context.Context, token string) (mcp.Principal, error) { retur
 `})
 	require.Len(t, p.Auth, 2)
 	assert.Equal(t, []string{"https://as1", "https://as2"}, p.Auth[0].AuthorizationServers)
-	assert.Equal(t, []project.ScopeDef{{Name: "read", Description: "Read", Default: true}, {Name: "write"}}, p.Auth[0].Scopes)
+	assert.Equal(t, []project.ScopeDef{{Name: "read", Default: true}, {Name: "write"}}, p.Auth[0].Scopes)
 	assert.Equal(t, "bearer", p.Auth[1].Type)
 	assert.Empty(t, p.Auth[1].Scopes)
 }

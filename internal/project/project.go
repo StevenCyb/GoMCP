@@ -106,9 +106,8 @@ type Transport struct {
 
 // ScopeDef is an OAuth scope.
 type ScopeDef struct {
-	Name        string
-	Description string
-	Default     bool
+	Name    string
+	Default bool
 }
 
 // Auth is an authentication scheme with its verifier.

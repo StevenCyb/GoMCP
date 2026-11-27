@@ -184,7 +184,7 @@ func TestAuthRegistration(t *testing.T) {
 	p.Auth = []project.Auth{
 		{
 			Type: "oauth", Resource: "https://r", AuthorizationServers: []string{"https://as"}, Verify: fn("VerifyToken"),
-			Scopes: []project.ScopeDef{{Name: "read", Description: "Read", Default: true}, {Name: "write"}},
+			Scopes: []project.ScopeDef{{Name: "read", Default: true}, {Name: "write"}},
 		},
 		{Type: "bearer", Verify: fn("VerifyAPIKey")},
 	}
@@ -195,7 +195,7 @@ func TestAuthRegistration(t *testing.T) {
 	assert.Contains(t, src, "Verify: api.VerifyToken")
 	assert.Contains(t, src, `Resource: "https://r"`)
 	assert.Contains(t, src, `AuthorizationServers: []string{"https://as"}`)
-	assert.Contains(t, src, `Scopes: []mcp.ScopeDef{{Name: "read", Description: "Read", Default: true}, {Name: "write"}}`)
+	assert.Contains(t, src, `Scopes: []mcp.ScopeDef{{Name: "read", Default: true}, {Name: "write"}}`)
 	assert.Contains(t, src, "Type: mcp.AuthBearer")
 	assert.Contains(t, src, "Verify: api.VerifyAPIKey")
 }
