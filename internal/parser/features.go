@@ -144,7 +144,9 @@ func (c *collector) common(feature located, a annotated, ref project.FuncRef, f 
 				com.Icons = append(com.Icons, icon)
 			}
 		case "AuthScopes":
-			com.Scopes = append(com.Scopes, ann.Positionals()...)
+			if group := ann.Positionals(); len(group) > 0 {
+				com.Scopes = append(com.Scopes, group)
+			}
 		case "Use":
 			if use, ok := c.useRef(f, ann); ok {
 				com.Use = append(com.Use, use)

@@ -106,7 +106,7 @@ func (c *stdioClient) response(id int) (rpc.Message, []rpc.Message) {
 func stdioServer(t *testing.T, opts ...mcp.Option) *mcp.Server {
 	t.Helper()
 	s := newBasicServer(opts...)
-	require.NoError(t, mcp.AddTool(s, mcp.ToolDef{Name: toolHello, Scopes: []string{"admin"}},
+	require.NoError(t, mcp.AddTool(s, mcp.ToolDef{Name: toolHello, Scopes: [][]string{{"admin"}}},
 		func(ctx mcp.Context, in struct {
 			Name string `json:"name"`
 		}) (string, error) {
@@ -173,7 +173,7 @@ func TestServeStdioAsksTheClientForInput(t *testing.T) {
 
 func TestServeStdioListenStaysOpenAndDeliversUpdates(t *testing.T) {
 	s := newBasicServer()
-	require.NoError(t, mcp.AddResource(s, mcp.ResourceDef{URI: "secret:///{id}", Name: "s", Subscribable: true, Scopes: []string{"admin"}},
+	require.NoError(t, mcp.AddResource(s, mcp.ResourceDef{URI: "secret:///{id}", Name: "s", Subscribable: true, Scopes: [][]string{{"admin"}}},
 		func(mcp.Context, noteURI) (mcp.Contents, error) { return mcp.Contents{mcp.TextContent("x")}, nil }))
 	c := serveStdio(t, s, nil)
 

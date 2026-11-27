@@ -80,8 +80,8 @@ func TestParseExampleDirectory(t *testing.T) {
 	assert.Equal(t, "https://notes.example.com/mcp", p.Auth[0].Resource)
 	assert.Equal(t, []string{"https://auth.example.com"}, p.Auth[0].AuthorizationServers)
 	assert.Equal(t, []project.ScopeDef{
-		{Name: "notes:read", Description: "Read notes", Default: true},
-		{Name: "notes:write", Description: "Create and delete notes"},
+		{Name: "notes:read", Default: true},
+		{Name: "notes:write"},
 	}, p.Auth[0].Scopes)
 	assert.Equal(t, "bearer", p.Auth[1].Type)
 	assert.Equal(t, "VerifyAPIKey", p.Auth[1].Verify.Name)
@@ -103,7 +103,7 @@ func TestParseExampleDirectory(t *testing.T) {
 	assert.Equal(t, "Add", add.Func.Name)
 	assert.Equal(t, "Add note", add.Title)
 	assert.Equal(t, "Adds a short text note and returns it", add.Description)
-	assert.Equal(t, []string{"notes:write"}, add.Scopes)
+	assert.Equal(t, [][]string{{"notes:write"}}, add.Scopes)
 	assert.Equal(t, []project.Icon{{Src: "assets/add.svg"}}, add.Icons)
 	assert.Equal(t, []project.KV{{Key: "team", Value: "docs"}}, add.Meta)
 	assert.True(t, names["get_note"].Hint.ReadOnly)
@@ -216,6 +216,7 @@ func TestToolFeatures(t *testing.T) {
 // @MCP.Requires(sampling, roots, elicitation)
 // @MCP.Requires(elicitation="url")
 // @MCP.AuthScopes("a", "b")
+// @MCP.AuthScopes("c")
 // @MCP.Icon("i.svg")
 // @MCP.Icon("j.png", mime="image/png")
 // @MCP.Meta(team="docs", level=3, beta=true)
@@ -231,7 +232,7 @@ func Mw(ctx mcp.Context, req mcp.Request, next mcp.Handler) (any, error) { retur
 	assert.Equal(t, project.Hint{ReadOnly: true, Destructive: true, Idempotent: true, OpenWorld: true}, tool.Hint)
 	assert.Equal(t, project.Task{Mode: "required", TTL: "1m", Poll: "1s"}, tool.Task)
 	assert.Equal(t, []string{"sampling", "roots", "elicitation", "elicitation:url"}, tool.Requires)
-	assert.Equal(t, []string{"a", "b"}, tool.Scopes)
+	assert.Equal(t, [][]string{{"a", "b"}, {"c"}}, tool.Scopes, "a line is an OR group, lines are ANDed")
 	assert.Len(t, tool.Icons, 2)
 	assert.Equal(t, []project.KV{{Key: "beta", Value: true}, {Key: "level", Value: 3.0}, {Key: "team", Value: "docs"}}, tool.Meta)
 	require.Len(t, tool.Use, 1)
@@ -239,7 +240,7 @@ func Mw(ctx mcp.Context, req mcp.Request, next mcp.Handler) (any, error) { retur
 	assert.Equal(t, "example.com/app", tool.Use[0].ImportPath)
 	assert.Equal(t, "api", tool.Use[0].Pkg)
 	assert.Equal(t, "tools.go", tool.Func.Pos.File)
-	assert.Equal(t, 23, tool.Func.Pos.Line, "position of the function")
+	assert.Equal(t, 24, tool.Func.Pos.Line, "position of the function")
 }
 
 func TestDescriptionArgumentWins(t *testing.T) {
@@ -334,7 +335,7 @@ func TestAuthAnnotations(t *testing.T) {
 	p := parse(t, map[string]string{"auth.go": header + `// @MCP.Auth(type="oauth", resource="https://r")
 // @MCP.AuthServer("https://as1")
 // @MCP.AuthServer("https://as2")
-// @MCP.AuthScope("read", description="Read", default)
+// @MCP.AuthScope("read", default)
 // @MCP.AuthScope("write")
 func Verify(ctx context.Context, token string) (mcp.Principal, error) { return mcp.Principal{}, nil }
 
@@ -343,7 +344,7 @@ func VerifyKey(ctx context.Context, token string) (mcp.Principal, error) { retur
 `})
 	require.Len(t, p.Auth, 2)
 	assert.Equal(t, []string{"https://as1", "https://as2"}, p.Auth[0].AuthorizationServers)
-	assert.Equal(t, []project.ScopeDef{{Name: "read", Description: "Read", Default: true}, {Name: "write"}}, p.Auth[0].Scopes)
+	assert.Equal(t, []project.ScopeDef{{Name: "read", Default: true}, {Name: "write"}}, p.Auth[0].Scopes)
 	assert.Equal(t, "bearer", p.Auth[1].Type)
 	assert.Empty(t, p.Auth[1].Scopes)
 }

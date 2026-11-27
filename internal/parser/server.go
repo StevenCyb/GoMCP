@@ -46,7 +46,6 @@ func (c *collector) auth(feature located, a annotated, fd *ast.FuncDecl, ref pro
 				continue
 			}
 			def := project.ScopeDef{Name: name, Default: ann.Flag("default")}
-			def.Description, _ = ann.String("description")
 			scheme.Scopes = append(scheme.Scopes, def)
 		}
 	}

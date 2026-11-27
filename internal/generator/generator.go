@@ -247,9 +247,6 @@ func (g *gen) authScheme(a project.Auth) string {
 		defs := make([]string, len(a.Scopes))
 		for i, s := range a.Scopes {
 			parts := []string{"Name: " + q(s.Name)}
-			if s.Description != "" {
-				parts = append(parts, "Description: "+q(s.Description))
-			}
 			if s.Default {
 				parts = append(parts, "Default: true")
 			}
@@ -314,7 +311,11 @@ func (g *gen) common(c project.Common, name string) []string {
 		fields = append(fields, "Meta: "+meta(c.Meta))
 	}
 	if len(c.Scopes) > 0 {
-		fields = append(fields, "Scopes: []string{"+quoteAll(c.Scopes)+"}")
+		groups := make([]string, len(c.Scopes))
+		for i, group := range c.Scopes {
+			groups[i] = "{" + quoteAll(group) + "}"
+		}
+		fields = append(fields, "Scopes: [][]string{"+strings.Join(groups, ", ")+"}")
 	}
 	if len(c.Use) > 0 {
 		uses := make([]string, len(c.Use))
