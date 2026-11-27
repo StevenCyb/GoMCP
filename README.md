@@ -60,6 +60,7 @@ Get:
 > - [`todo`](examples/todo): todo list kept in a JSON file, with Setup and Teardown.
 > - [`fetch`](examples/fetch): URL fetcher with an allowlist, size limit and timeout.
 > - [`features`](examples/features): every feature once.
+> - [`esm`](examples/esm): tickets with Entra authentication, review and confirmation, split into handlers, rules and repository.
 
 ## Why GoMCP
 
