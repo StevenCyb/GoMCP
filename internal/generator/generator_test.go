@@ -92,7 +92,7 @@ func TestToolRegistration(t *testing.T) {
 			Func: fn("Add"), Name: "add_note", Title: "Add note", Description: "Adds a note",
 			Icons:  []project.Icon{{Src: "assets/add.svg"}},
 			Meta:   []project.KV{{Key: "beta", Value: true}, {Key: "level", Value: 3.0}, {Key: "team", Value: "docs"}},
-			Scopes: []string{"notes:write"},
+			Scopes: [][]string{{"notes:write"}},
 			Use:    []project.FuncRef{fn("Audit")},
 		},
 		Hint:     project.Hint{ReadOnly: true, Idempotent: true},
@@ -109,7 +109,7 @@ func TestToolRegistration(t *testing.T) {
 	assert.Contains(t, src, `Description: "Adds a note"`)
 	assert.Contains(t, src, "Hint: mcp.Hint{ReadOnly: true, Idempotent: true}")
 	assert.Contains(t, src, `Meta: map[string]any{"beta": true, "level": 3.0, "team": "docs"}`)
-	assert.Contains(t, src, `Scopes: []string{"notes:write"}`)
+	assert.Contains(t, src, `Scopes: [][]string{{"notes:write"}}`)
 	assert.Contains(t, src, "Requires: []string{mcp.CapSampling, mcp.CapRoots, mcp.CapElicitation, mcp.CapElicitationURL}")
 	assert.Contains(t, src, "Use: []mcp.Middleware{api.Audit}")
 	assert.Contains(t, src, "Task: mcp.TaskOptional")
@@ -123,7 +123,7 @@ func TestResourceRegistration(t *testing.T) {
 	p := base()
 	p.Resources = []project.Resource{
 		{
-			Common:       project.Common{Func: fn("Read"), Name: "Read", Title: "Note", Description: "d", Scopes: []string{"r"}},
+			Common:       project.Common{Func: fn("Read"), Name: "Read", Title: "Note", Description: "d", Scopes: [][]string{{"r"}}},
 			URI:          "note:///{id}",
 			MIME:         "text/plain",
 			Template:     true,

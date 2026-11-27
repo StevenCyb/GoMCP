@@ -60,7 +60,8 @@ type ToolDef struct {
 	Icons       []Icon
 	Hint        Hint
 	Meta        map[string]any
-	Scopes      []string
+	// Scopes are the scopes a caller needs: every group, and in each group any one scope.
+	Scopes [][]string
 	// Requires lists client capabilities the tool needs (CapSampling, CapRoots, ...).
 	Requires []string
 	Use      []Middleware

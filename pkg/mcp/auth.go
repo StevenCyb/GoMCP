@@ -126,7 +126,12 @@ func (s *Server) unauthorized(errCode string) *transport.AuthFailure {
 }
 
 // forbidden builds the 403 challenge that asks the client for more scopes.
-func (s *Server) forbidden(need []string) *transport.AuthFailure {
+// For a group of alternatives it names the first one.
+func (s *Server) forbidden(missing [][]string) *transport.AuthFailure {
+	need := make([]string, len(missing))
+	for i, group := range missing {
+		need[i] = group[0]
+	}
 	params := []string{quoted("error", "insufficient_scope"), quoted("scope", strings.Join(need, " "))}
 	if sc, ok := s.oauthScheme(); ok {
 		if meta := sc.metadataURL(); meta != "" {
@@ -147,7 +152,7 @@ func challenge(params []string) string {
 //
 // Each method reads only the field its handler reads. Decoding the whole body into one struct would let
 // a wrongly typed unrelated field fail the decode here while the handler still accepts the request.
-func (s *Server) requiredScopes(method string, params json.RawMessage) []string {
+func (s *Server) requiredScopes(method string, params json.RawMessage) [][]string {
 	var fields map[string]json.RawMessage
 	if json.Unmarshal(params, &fields) != nil {
 		return nil
@@ -182,7 +187,7 @@ func (s *Server) requiredScopes(method string, params json.RawMessage) []string 
 	return nil
 }
 
-func (s *Server) toolScopes(name string) []string {
+func (s *Server) toolScopes(name string) [][]string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if t := s.toolIdx[name]; t != nil {
@@ -191,7 +196,7 @@ func (s *Server) toolScopes(name string) []string {
 	return nil
 }
 
-func (s *Server) promptScopes(name string) []string {
+func (s *Server) promptScopes(name string) [][]string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if p := s.promptIdx[name]; p != nil {
@@ -200,22 +205,26 @@ func (s *Server) promptScopes(name string) []string {
 	return nil
 }
 
-func (s *Server) resourceScopes(uri string) []string {
+func (s *Server) resourceScopes(uri string) [][]string {
 	if r, _ := s.findResource(uri); r != nil {
 		return r.def.Scopes
 	}
 	return nil
 }
 
-// hasScopes reports whether the principal holds every scope.
-func hasScopes(p Principal, need []string) bool {
-	for _, scope := range need {
-		if !slices.Contains(p.Scopes, scope) {
-			return false
+// missingScopes returns the groups the principal does not satisfy. A group is satisfied by
+// any one of its scopes (OR); all groups are required (AND).
+func missingScopes(p Principal, need [][]string) [][]string {
+	var missing [][]string
+	for _, group := range need {
+		if !slices.ContainsFunc(group, func(scope string) bool { return slices.Contains(p.Scopes, scope) }) {
+			missing = append(missing, group)
 		}
 	}
-	return true
+	return missing
 }
+
+func hasScopes(p Principal, need [][]string) bool { return len(missingScopes(p, need)) == 0 }
 
 func (s *Server) authorize(c *transport.Call, method string, params json.RawMessage) *transport.AuthFailure {
 	need := s.requiredScopes(method, params)
@@ -223,8 +232,8 @@ func (s *Server) authorize(c *transport.Call, method string, params json.RawMess
 		return nil
 	}
 	principal, _ := c.Principal().(Principal)
-	if !hasScopes(principal, need) {
-		return s.forbidden(need)
+	if missing := missingScopes(principal, need); len(missing) > 0 {
+		return s.forbidden(missing)
 	}
 	return nil
 }

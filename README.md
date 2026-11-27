@@ -431,7 +431,7 @@ sequenceDiagram
 
 ### Scopes
 
-Limit a feature to callers with certain scopes. A missing scope gives `403 insufficient_scope`, so the client can ask the user for more permission. Needs an `@MCP.Auth`: without one the scopes are not checked. They are checked on call, get and read, not on list. In handlers, `ctx.Principal()` is the caller.
+Limit a feature to callers with certain scopes. Scopes on one `@MCP.AuthScopes` line are alternatives (any one is enough); repeated lines are all required. A missing scope gives `403 insufficient_scope`, so the client can ask the user for more permission. Needs an `@MCP.Auth`: without one the scopes are not checked. They are checked on call, get and read, not on list. In handlers, `ctx.Principal()` is the caller.
 
 ```go
 // @MCP.Tool("delete_note")
@@ -442,6 +442,13 @@ func Delete(ctx mcp.Context, in IDIn) (mcp.Empty, error) {
 	return mcp.Empty{}, nil
 }
 ```
+
+```go
+// @MCP.AuthScopes("notes:write", "notes:admin") // write OR admin
+// @MCP.AuthScopes("notes:read")                 // AND read
+```
+
+The `403` challenge names the first scope of every group the caller misses.
 
 ## Tools
 

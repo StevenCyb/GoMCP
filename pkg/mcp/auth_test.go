@@ -51,13 +51,13 @@ func authedServer(t *testing.T, schemes ...mcp.AuthScheme) *mcp.Server {
 	s := newBasicServer(mcp.WithAuth(schemes...))
 	require.NoError(t, mcp.AddTool(s, mcp.ToolDef{Name: "public"},
 		func(mcp.Context, mcp.Empty) (string, error) { return "ok", nil }))
-	require.NoError(t, mcp.AddTool(s, mcp.ToolDef{Name: "write_note", Scopes: []string{scopeWrite}},
+	require.NoError(t, mcp.AddTool(s, mcp.ToolDef{Name: "write_note", Scopes: [][]string{{scopeWrite}}},
 		func(mcp.Context, mcp.Empty) (string, error) { return "written", nil }))
 	require.NoError(t, mcp.AddTool(s, mcp.ToolDef{Name: "whoami"},
 		func(ctx mcp.Context, _ mcp.Empty) (string, error) { return ctx.Principal().Subject, nil }))
-	require.NoError(t, mcp.AddResource(s, mcp.ResourceDef{URI: noteTemplate, Name: "n", Scopes: []string{scopeWrite}},
+	require.NoError(t, mcp.AddResource(s, mcp.ResourceDef{URI: noteTemplate, Name: "n", Scopes: [][]string{{scopeWrite}}},
 		func(mcp.Context, noteURI) (mcp.Contents, error) { return mcp.Contents{mcp.TextContent("x")}, nil }))
-	require.NoError(t, mcp.AddPrompt(s, mcp.PromptDef{Name: "p", Scopes: []string{scopeWrite}},
+	require.NoError(t, mcp.AddPrompt(s, mcp.PromptDef{Name: "p", Scopes: [][]string{{scopeWrite}}},
 		func(mcp.Context, mcp.Empty) (mcp.Messages, error) { return mcp.Messages{mcp.UserText("hi")}, nil }))
 	return s
 }
@@ -269,7 +269,7 @@ func TestListeningOnlyAcknowledgesResourcesTheCallerMayRead(t *testing.T) {
 	s := authedServer(t, oauthScheme())
 	require.NoError(t, mcp.AddResource(s, mcp.ResourceDef{URI: "open:///{id}", Name: "o", Subscribable: true},
 		func(mcp.Context, noteURI) (mcp.Contents, error) { return mcp.Contents{mcp.TextContent("x")}, nil }))
-	require.NoError(t, mcp.AddResource(s, mcp.ResourceDef{URI: "secret:///{id}", Name: "s", Subscribable: true, Scopes: []string{scopeWrite}},
+	require.NoError(t, mcp.AddResource(s, mcp.ResourceDef{URI: "secret:///{id}", Name: "s", Subscribable: true, Scopes: [][]string{{scopeWrite}}},
 		func(mcp.Context, noteURI) (mcp.Contents, error) { return mcp.Contents{mcp.TextContent("x")}, nil }))
 	srv := newServer(t, s)
 	filter := map[string]any{"resourceSubscriptions": []string{"open:///1", "secret:///1"}}
@@ -280,4 +280,42 @@ func TestListeningOnlyAcknowledgesResourcesTheCallerMayRead(t *testing.T) {
 	}
 	assert.JSONEq(t, `{"resourceSubscriptions":["open:///1"]}`, agreed("reader"), "the reader does not get the scoped resource")
 	assert.JSONEq(t, `{"resourceSubscriptions":["open:///1","secret:///1"]}`, agreed("writer"))
+}
+
+func TestScopeGroupsAreOrWithinAndAcrossLines(t *testing.T) {
+	const scopeOps = "notes:ops"
+	tokens["ops"] = mcp.Principal{Subject: "carol", Scopes: []string{scopeOps}}
+	tokens["both"] = mcp.Principal{Subject: "dave", Scopes: []string{scopeRead, scopeOps}}
+	t.Cleanup(func() { delete(tokens, "ops"); delete(tokens, "both") })
+
+	s := newBasicServer(mcp.WithAuth(oauthScheme()))
+	handler := func(mcp.Context, mcp.Empty) (string, error) { return "ok", nil }
+	// (write OR ops)
+	require.NoError(t, mcp.AddTool(s, mcp.ToolDef{Name: "either", Scopes: [][]string{{scopeWrite, scopeOps}}}, handler))
+	// (read) AND (write OR ops)
+	require.NoError(t, mcp.AddTool(s, mcp.ToolDef{Name: "gated", Scopes: [][]string{{scopeRead}, {scopeWrite, scopeOps}}}, handler))
+	srv := newServer(t, s)
+
+	cases := []struct {
+		tool, token string
+		code        int
+		scope       string
+	}{
+		{"either", "writer", http.StatusOK, ""},
+		{"either", "ops", http.StatusOK, ""},
+		{"either", "reader", http.StatusForbidden, scopeWrite},
+		{"gated", "both", http.StatusOK, ""},
+		{"gated", "writer", http.StatusOK, ""},
+		{"gated", "ops", http.StatusForbidden, scopeRead},
+		{"gated", "reader", http.StatusForbidden, scopeWrite},
+	}
+	for _, tc := range cases {
+		t.Run(tc.tool+"/"+tc.token, func(t *testing.T) {
+			code, header := status(t, connectAs(t, srv, tc.token, nil), "tools/call", map[string]any{keyName: tc.tool})
+			assert.Equal(t, tc.code, code)
+			if tc.scope != "" {
+				assert.Contains(t, header, `scope="`+tc.scope+`"`, "challenge names the first alternative of each missing group")
+			}
+		})
+	}
 }

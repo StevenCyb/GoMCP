@@ -26,8 +26,9 @@ type ResourceDef struct {
 	Annotations  *Annotations
 	Subscribable bool
 	Meta         map[string]any
-	Scopes       []string
-	Use          []Middleware
+	// Scopes are the scopes a caller needs: every group, and in each group any one scope.
+	Scopes [][]string
+	Use    []Middleware
 }
 
 type resource struct {

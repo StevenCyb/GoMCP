@@ -134,7 +134,7 @@ type Common struct {
 	Description string
 	Icons       []Icon
 	Meta        []KV
-	Scopes      []string
+	Scopes      [][]string // groups ANDed, scopes within a group ORed
 	Use         []FuncRef
 	// Flag is the feature flag name; the feature is not registered if it is disabled at start.
 	Flag string
