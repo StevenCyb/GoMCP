@@ -13,6 +13,7 @@ import (
 	"github.com/StevenCyb/GoMCP/internal/caller"
 	"github.com/StevenCyb/GoMCP/internal/runner"
 	"github.com/StevenCyb/GoMCP/internal/scaffold"
+	"github.com/StevenCyb/GoMCP/internal/tui"
 )
 
 // linkVersion is overridden at release build time via -ldflags "-X main.linkVersion=...".
@@ -40,6 +41,13 @@ func resolveVersion(linked string, info *debug.BuildInfo) string {
 	return linked
 }
 
+const (
+	targetHelp = "A project directory (built and run over stdio) or the URL of a remote server."
+	// The flags are read by parseClient, they are described here for the help text.
+	clientFlagsHelp = "Flags: --json (raw result), --token <bearer> (or $GOMCP_TOKEN), --oauth (log in with the browser), " +
+		"--client-id <id>, --scope <scopes>, --callback-port <port>, --root <dir> (repeatable, answers roots/list), --tags <tags>, --dotenv <file> (project only)."
+)
+
 const banner = `   ____       __  __  ____ ____
   / ___| ___ |  \/  |/ ___|  _ \
  | |  _ / _ \| |\/| | |   | |_) |
@@ -50,6 +58,7 @@ const (
 	argProject = "project_path"
 	argOutput  = "output_path"
 	argDir     = "dir"
+	argTarget  = "target"
 	optTags    = "tags"
 	optDotEnv  = "dotenv"
 	optAddr    = "addr"
@@ -59,27 +68,28 @@ const (
 
 // actions are the operations the commands run; tests replace them.
 type actions struct {
-	build func(ctx context.Context, dir, out, tags string) error
-	serve func(ctx context.Context, o runner.Options) error
-	watch func(ctx context.Context, o runner.Options) error
-	init  func(ctx context.Context, o scaffold.Options) error
-	call  func(ctx context.Context, o runner.Options, req caller.Request, stdout io.Writer) error
-	stdin io.Reader // arguments of call given as "-"
+	build       func(ctx context.Context, dir, out, tags string) error
+	serve       func(ctx context.Context, o runner.Options) error
+	watch       func(ctx context.Context, o runner.Options) error
+	init        func(ctx context.Context, o scaffold.Options) error
+	client      func(ctx context.Context, cfg caller.Config, req caller.Request, stdout io.Writer) error
+	interactive func(ctx context.Context, cfg caller.Config) error
+	stdin       io.Reader // arguments of client call given as "-"
 }
 
 func realActions() actions {
-	return actions{build: runner.Build, serve: runner.Serve, watch: runner.Watch, init: scaffold.Init, call: caller.Run, stdin: os.Stdin}
+	return actions{build: runner.Build, serve: runner.Serve, watch: runner.Watch, init: scaffold.Init, client: caller.Run, interactive: tui.Run, stdin: os.Stdin}
 }
 
 // run executes the command line and returns the exit code.
 func run(ctx context.Context, args []string, stdout, stderr io.Writer, a actions) int {
-	var call callInput
-	args, err := parseCall(args, &call)
+	var client clientInput
+	args, err := parseClient(args, &client)
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, err)
 		return 1
 	}
-	app := newApp(ctx, stdout, stderr, a, &call)
+	app := newApp(ctx, stdout, stderr, a, &client)
 	if _, err := app.RunWith(args); err != nil {
 		_, _ = fmt.Fprintln(stderr, err)
 		return 1
@@ -87,7 +97,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, a actions
 	return 0
 }
 
-func newApp(ctx context.Context, stdout, stderr io.Writer, a actions, call *callInput) *cli.CLI {
+func newApp(ctx context.Context, stdout, stderr io.Writer, a actions, client *clientInput) *cli.CLI {
 	options := func(c *cli.Context) runner.Options {
 		return runner.Options{
 			Dir:    *c.GetArgument(argProject),
@@ -156,24 +166,35 @@ func newApp(ctx context.Context, stdout, stderr io.Writer, a actions, call *call
 			),
 		),
 		cli.Command(
-			"call",
-			cli.Description("Builds the project, lists its tools or calls one and prints the result, to try a tool without an AI client."),
-			cli.Argument(
-				argProject,
-				cli.Description("Path to the root of the Go project, then the tool name and its arguments as a JSON object (- reads stdin)."),
-				// parseCall reads the flags, they are declared for the help text
-				cli.Option(optJSON, cli.Description("Print the raw result as indented JSON.")),
-				cli.Option(optRoot, cli.Short('r'), cli.Description("Directory answered to roots/list, may be repeated.")),
-				cli.Option(optTags, cli.Short('t'), cli.Default(""), cli.Description("Build tags for go build.")),
-				cli.Option(optDotEnv, cli.Short('e'), cli.Default(""),
-					cli.Description("Path to a .env file for the server process (default: <project_path>/.env).")),
-				cli.Handler(func(*cli.Context) error {
-					req, err := call.resolve(a.stdin)
+			"client",
+			cli.Description("A terminal MCP client for a local project or a remote server, to try tools without an AI client."),
+			cli.Command(
+				subList,
+				cli.Description("Lists the tools of the target. "+clientFlagsHelp),
+				cli.Example("gomcp client list ./examples/todo\ngomcp client list https://example.com/mcp --oauth"),
+				cli.Argument(argTarget, cli.Description(targetHelp), cli.Handler(func(*cli.Context) error {
+					return a.client(ctx, client.config(stderr), caller.Request{}, stdout)
+				})),
+			),
+			cli.Command(
+				subCall,
+				cli.Description("Calls a tool and prints the result: client call <target> <tool> [JSON object, - reads stdin]. "+clientFlagsHelp),
+				cli.Example("gomcp client call ./examples/todo add_todo '{\"title\":\"milk\"}'\ngomcp client call https://example.com/mcp whoami --token $TOKEN"),
+				cli.Argument(argTarget, cli.Description(targetHelp), cli.Handler(func(*cli.Context) error {
+					req, err := client.resolve(a.stdin)
 					if err != nil {
 						return err
 					}
-					return a.call(ctx, runner.Options{Dir: call.project, Tags: call.tags, DotEnv: call.dotenv, Stderr: stderr}, req, stdout)
-				}),
+					return a.client(ctx, client.config(stderr), req, stdout)
+				})),
+			),
+			cli.Command(
+				subInteractive,
+				cli.Description("Opens a terminal UI: pick a tool, fill in a form, see the result. "+clientFlagsHelp),
+				cli.Example("gomcp client interactive ./examples/todo\ngomcp client interactive https://example.com/mcp --oauth"),
+				cli.Argument(argTarget, cli.Description(targetHelp), cli.Handler(func(*cli.Context) error {
+					return a.interactive(ctx, client.config(io.Discard))
+				})),
 			),
 		),
 		cli.Command(

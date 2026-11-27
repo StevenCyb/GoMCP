@@ -93,6 +93,12 @@ linters:
           - embeddedstructfieldcheck
         path: _test(ing)?\.go
       - linters:
+          - tagliatelle
+        path: internal/caller/oauth\.go
+      - linters:
+          - gochecknoglobals
+        path: internal/tui/
+      - linters:
           - gocritic
         path: _test\.go
         text: (unnamedResult|exitAfterDefer)

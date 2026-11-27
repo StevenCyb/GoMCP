@@ -17,9 +17,10 @@ import (
 )
 
 const (
-	cmdServe   = "serve"
-	cmdCall    = "call"
-	exampleDir = "./example"
+	cmdServe    = "serve"
+	cmdClient   = "client"
+	toolAddNote = "add_note"
+	exampleDir  = "./example"
 )
 
 // fakeActions records the calls the CLI makes.
@@ -27,6 +28,7 @@ type fakeActions struct {
 	calls []string
 	build struct{ dir, out, tags string }
 	opts  runner.Options
+	cfg   caller.Config
 	scaf  scaffold.Options
 	req   caller.Request
 	stdin string
@@ -55,10 +57,15 @@ func (f *fakeActions) actions() actions {
 			f.opts = o
 			return f.err
 		},
-		call: func(_ context.Context, o runner.Options, req caller.Request, stdout io.Writer) error {
-			f.calls = append(f.calls, "call")
-			f.opts, f.req = o, req
+		client: func(_ context.Context, cfg caller.Config, req caller.Request, stdout io.Writer) error {
+			f.calls = append(f.calls, cmdClient)
+			f.cfg, f.req = cfg, req
 			_, _ = io.WriteString(stdout, "result\n")
+			return f.err
+		},
+		interactive: func(_ context.Context, cfg caller.Config) error {
+			f.calls = append(f.calls, subInteractive)
+			f.cfg = cfg
 			return f.err
 		},
 		stdin: strings.NewReader(f.stdin),
@@ -132,53 +139,88 @@ func TestStdioCommandHasNoAddressFlag(t *testing.T) {
 	}
 }
 
-func TestCallListsTools(t *testing.T) {
+func TestClientListsTools(t *testing.T) {
 	f := &fakeActions{}
-	code, stdout, stderr := execute(t, f, cmdCall, exampleDir)
+	code, stdout, stderr := execute(t, f, cmdClient, subList, exampleDir)
 	require.Equal(t, 0, code, stderr)
-	assert.Equal(t, []string{cmdCall}, f.calls)
+	assert.Equal(t, []string{cmdClient}, f.calls)
 	assert.Equal(t, "result\n", stdout, "the result is on stdout")
-	assert.Equal(t, exampleDir, f.opts.Dir)
+	assert.Equal(t, exampleDir, f.cfg.Target)
 	assert.Empty(t, f.req.Tool, "no tool means listing")
 }
 
-func TestCallATool(t *testing.T) {
+func TestClientCallATool(t *testing.T) {
 	f := &fakeActions{}
-	code, _, stderr := execute(t, f, cmdCall, exampleDir, "add_note", `{"text":"hi"}`)
+	code, _, stderr := execute(t, f, cmdClient, subCall, exampleDir, toolAddNote, `{"text":"hi"}`)
 	require.Equal(t, 0, code, stderr)
-	assert.Equal(t, "add_note", f.req.Tool)
+	assert.Equal(t, toolAddNote, f.req.Tool)
 	assert.JSONEq(t, `{"text":"hi"}`, string(f.req.Args))
 	assert.False(t, f.req.JSON)
 }
 
-func TestCallFlagsInAnyPosition(t *testing.T) {
+func TestClientCallWithoutArguments(t *testing.T) {
 	f := &fakeActions{}
-	code, _, stderr := execute(t, f, cmdCall, "--json", "-t", "dev", exampleDir, "-e", "x.env", "get_note", "--root", "a", "-r", "b", `{"id":"1"}`)
+	code, _, stderr := execute(t, f, cmdClient, subCall, exampleDir, "list_notes")
 	require.Equal(t, 0, code, stderr)
-	assert.Equal(t, exampleDir, f.opts.Dir)
-	assert.Equal(t, "dev", f.opts.Tags)
-	assert.Equal(t, "x.env", f.opts.DotEnv)
-	assert.Equal(t, "get_note", f.req.Tool)
-	assert.True(t, f.req.JSON)
-	assert.Equal(t, []string{"a", "b"}, f.req.Roots)
+	assert.Equal(t, "list_notes", f.req.Tool)
+	assert.Empty(t, f.req.Args)
 }
 
-func TestCallArgumentsFromStdin(t *testing.T) {
+func TestClientFlagsInAnyPosition(t *testing.T) {
+	f := &fakeActions{}
+	code, _, stderr := execute(t, f, cmdClient, subCall, "--json", "-t", "dev", exampleDir, "-e", "x.env", "get_note",
+		"--root", "a", "-r", "b", "--scope=read write", "--client-id", "abc", "--callback-port", "8123", "--token", "tok", "--oauth", `{"id":"1"}`)
+	require.Equal(t, 0, code, stderr)
+	assert.Equal(t, caller.Config{
+		Target: exampleDir, Tags: "dev", DotEnv: "x.env", Roots: []string{"a", "b"},
+		Token: "tok", OAuth: true, ClientID: "abc", Scope: "read write", CallbackPort: 8123, Stderr: f.cfg.Stderr,
+	}, f.cfg)
+	assert.Equal(t, "get_note", f.req.Tool)
+	assert.True(t, f.req.JSON)
+}
+
+func TestClientTokenFromEnvironment(t *testing.T) {
+	t.Setenv(envToken, "from-env")
+	f := &fakeActions{}
+	code, _, stderr := execute(t, f, cmdClient, subList, "https://example.com/mcp")
+	require.Equal(t, 0, code, stderr)
+	assert.Equal(t, "from-env", f.cfg.Token)
+
+	code, _, stderr = execute(t, f, cmdClient, subList, "https://example.com/mcp", "--token", "flag")
+	require.Equal(t, 0, code, stderr)
+	assert.Equal(t, "flag", f.cfg.Token, "the flag wins")
+}
+
+func TestClientInteractive(t *testing.T) {
+	f := &fakeActions{}
+	code, _, stderr := execute(t, f, cmdClient, subInteractive, exampleDir, "--oauth")
+	require.Equal(t, 0, code, stderr)
+	assert.Equal(t, []string{subInteractive}, f.calls)
+	assert.Equal(t, exampleDir, f.cfg.Target)
+	assert.True(t, f.cfg.OAuth)
+}
+
+func TestClientArgumentsFromStdin(t *testing.T) {
 	f := &fakeActions{stdin: ` {"text":"from stdin"}` + "\n"}
-	code, _, stderr := execute(t, f, cmdCall, exampleDir, "add_note", "-")
+	code, _, stderr := execute(t, f, cmdClient, subCall, exampleDir, toolAddNote, "-")
 	require.Equal(t, 0, code, stderr)
 	assert.JSONEq(t, `{"text":"from stdin"}`, string(f.req.Args))
 }
 
-func TestCallRejectsBadInputBeforeBuilding(t *testing.T) {
+func TestClientRejectsBadInputBeforeConnecting(t *testing.T) {
 	cases := map[string][]string{
-		"not json":      {cmdCall, exampleDir, "add_note", "{text"},
-		"not an object": {cmdCall, exampleDir, "add_note", "[1]"},
-		"bad stdin":     {cmdCall, exampleDir, "add_note", "-"},
-		"unknown flag":  {cmdCall, exampleDir, "--nope"},
-		"missing value": {cmdCall, exampleDir, "--root"},
-		"too many":      {cmdCall, exampleDir, "add_note", "{}", "extra"},
-		"no project":    {cmdCall},
+		"not json":          {cmdClient, subCall, exampleDir, toolAddNote, "{text"},
+		"not an object":     {cmdClient, subCall, exampleDir, toolAddNote, "[1]"},
+		"bad stdin":         {cmdClient, subCall, exampleDir, toolAddNote, "-"},
+		"unknown flag":      {cmdClient, subList, exampleDir, "--nope"},
+		"missing value":     {cmdClient, subList, exampleDir, "--root"},
+		"too many":          {cmdClient, subCall, exampleDir, toolAddNote, "{}", "extra"},
+		"call without tool": {cmdClient, subCall, exampleDir},
+		"list with tool":    {cmdClient, subList, exampleDir, toolAddNote},
+		"no target":         {cmdClient, subList},
+		"no subcommand":     {cmdClient},
+		"unknown sub":       {cmdClient, "nope", exampleDir},
+		"old call command":  {"call", exampleDir},
 	}
 	for name, args := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -192,9 +234,9 @@ func TestCallRejectsBadInputBeforeBuilding(t *testing.T) {
 	}
 }
 
-func TestCallFailureExitsWithOneAndMessageOnStderr(t *testing.T) {
+func TestClientFailureExitsWithOneAndMessageOnStderr(t *testing.T) {
 	f := &fakeActions{err: &caller.ToolError{Message: "it broke"}}
-	code, _, stderr := execute(t, f, cmdCall, exampleDir, "fail")
+	code, _, stderr := execute(t, f, cmdClient, subCall, exampleDir, "fail")
 	assert.Equal(t, 1, code)
 	assert.Contains(t, stderr, "it broke")
 }

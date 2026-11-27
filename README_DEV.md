@@ -42,10 +42,11 @@ Claude Code answers forms and URL pages itself in non-interactive runs, so use `
 
 ## Quick manual test
 
-`gomcp call` builds the project and lists its tools or calls one, no AI client needed:
+`gomcp client` builds the project and lists its tools, calls one or opens a terminal UI, no AI client needed. A URL as target talks to a running server, `--token` or `--oauth` sign in:
 ```sh
-go run ./cmd/gomcp call ./examples/features
-go run ./cmd/gomcp call ./examples/features add_note '{"text":"hi"}'
+go run ./cmd/gomcp client list ./examples/todo
+go run ./cmd/gomcp client call ./examples/todo add_todo '{"text":"hi"}'
+go run ./cmd/gomcp client interactive ./examples/todo
 ```
 
 ## Test stdio
