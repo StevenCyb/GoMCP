@@ -115,6 +115,7 @@ gomcp serve .
   - [Scopes](#scopes)
 - [Tools](#tools)
   - [Defining a tool](#defining-a-tool)
+  - [Feature flags](#feature-flags)
   - [Hints, metadata and requirements](#hints-metadata-and-requirements)
   - [Results and errors](#results-and-errors)
   - [Asking the user (forms)](#asking-the-user-forms)
