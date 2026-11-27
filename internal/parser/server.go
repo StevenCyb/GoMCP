@@ -49,10 +49,6 @@ func (c *collector) auth(feature located, a annotated, fd *ast.FuncDecl, ref pro
 			scheme.Scopes = append(scheme.Scopes, def)
 		}
 	}
-	if typ == "oauth" && scheme.Resource == "" {
-		c.errorf(feature.pos, "Auth type oauth needs resource=\"...\"")
-		return
-	}
 	if typ == "bearer" && (len(scheme.AuthorizationServers) > 0 || len(scheme.Scopes) > 0) {
 		c.errorf(feature.pos, "AuthServer and AuthScope are only valid for type oauth")
 		return

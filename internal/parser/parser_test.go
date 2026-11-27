@@ -427,7 +427,6 @@ func TestErrors(t *testing.T) {
 		{"bad task mode", "// @MCP.Tool(\"x\")\n// @MCP.Task(sometimes)\nfunc T(ctx mcp.Context, in Empty) (Out, error) { return Out{}, nil }\n", "sometimes"},
 		{"bad requires", "// @MCP.Tool(\"x\")\n// @MCP.Requires(telepathy)\nfunc T(ctx mcp.Context, in Empty) (Out, error) { return Out{}, nil }\n", "telepathy"},
 		{"bad auth type", "// @MCP.Auth(type=\"magic\")\nfunc V(ctx context.Context, t string) (mcp.Principal, error) { return mcp.Principal{}, nil }\n", "magic"},
-		{"oauth needs resource", "// @MCP.Auth(type=\"oauth\")\nfunc V(ctx context.Context, t string) (mcp.Principal, error) { return mcp.Principal{}, nil }\n", "resource"},
 		{"auth scope without auth", "// @MCP.AuthScope(\"x\")\nfunc V(ctx context.Context, t string) (mcp.Principal, error) { return mcp.Principal{}, nil }\n", "AuthScope"},
 		{"verifier shape", "// @MCP.Auth(type=\"bearer\")\nfunc V(t string) (mcp.Principal, error) { return mcp.Principal{}, nil }\n", "2 parameters"},
 		{"list for unknown template", "// @MCP.ResourceList(\"note:///{id}\")\nfunc L(ctx mcp.Context, p mcp.PageReq) (mcp.Page[mcp.ResourceRef], error) { return mcp.Page[mcp.ResourceRef]{}, nil }\n", "no resource template"},
